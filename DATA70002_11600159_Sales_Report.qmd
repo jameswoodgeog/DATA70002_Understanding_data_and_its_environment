@@ -55,6 +55,7 @@ figcaption {
 library(tidyverse)
 library(ggplot2)
 library(dplyr)
+library(corrplot)
 ```
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
@@ -62,6 +63,7 @@ library(dplyr)
 storedata <- read.csv("Data/clean_store_data.csv")
 test_data <- read.csv("Data/clean_test_data.csv")
 traindata <- read.csv("Data/clean_train_data.csv")
+df <- read.csv("Data/updated_training_data_with_store.csv")
 ```
 
 
@@ -96,6 +98,53 @@ storedata$CompetitionDistance_dec <- cut(storedata$CompetitionDistance, breaks =
 storedata <- storedata |> 
   relocate(CompetitionDistance_dec, .after = CompetitionDistance)
 ```
+
+```{r}
+# Promo2SinceWeek
+# WHAT IS GOING ON WITH THE PROMO VARIABLES? IT LOOKS LIKE THEY ARE SORTED BUT I AM NOT SURE
+```
+
+```{r}
+# Train data
+
+```
+
+```{r}
+# Test data
+```
+
+```{r}
+# correlation plot to find multicollinearity
+numeric_df <- df[, sapply(df, is.numeric)]
+cor_matrix <- cor(numeric_df)
+corrplot(cor_matrix, method = "circle")
+cor(cor_matrix, method = "spearman")
+
+```
+
+
+```{r}
+# Modelling
+m <- lm(Sales ~ 
+          Customers +
+          CompetitionDistance +
+          Promo +
+          Month +
+          WeekOfYear +
+          StoreType +
+          Assortment +
+          Promo2,
+        data = df)
+summary(m)
+
+
+```
+
+
+
+
+
+
 
 
 
