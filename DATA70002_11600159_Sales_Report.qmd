@@ -60,9 +60,6 @@ library(corrplot)
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 # Load the data
-storedata <- read.csv("Data/clean_store_data.csv")
-test_data <- read.csv("Data/clean_test_data.csv")
-traindata <- read.csv("Data/clean_train_data.csv")
 df <- read.csv("Data/updated_training_data_with_store.csv")
 ```
 
@@ -74,71 +71,141 @@ df <- read.csv("Data/updated_training_data_with_store.csv")
 # Methodology
 
 ### Store data cleaning
-```{r}
-# Convert storedata$Assortment
-# a(basic) to "1"
-# b(extra) to "2"
-# c(extended) to "3"
-table(storedata$Assortment)
-storedata$Assortment <- recode(storedata$Assortment, "a" = 1, "b" = 2, "c" = 3)
-table(storedata$Assortment)
+```{r, eval=FALSE, include=FALSE}
+table(df$StoreType)
+df$StoreType <- recode(df$StoreType, "a" = 1, "b" = 2, "c" = 3, "d" = 4)
+table(df$StoreType)
+
+table(df$Assortment)
+df$Assortment <- recode(df$Assortment, "a" = 1, "b" = 2, "c" = 3)
+table(df$Assortment)
 ```
 
-```{r}
-# impute the 3 missing values with a mean distance
-mean(storedata$CompetitionDistance)
-storedata$CompetitionDistance[is.na(storedata$CompetitionDistance)] <- mean(storedata$CompetitionDistance)
-# Then rescale storedata$CompetitionDistance into deciles
-# 1st into quantiles so outliers are more irrelevant, then into deciles
-# Rescale 'value' column into deciles
-storedata$CompetitionDistance_dec <- cut(storedata$CompetitionDistance, breaks = quantile(storedata$CompetitionDistance, probs = seq(0, 1, by = 0.1)), 
-                 include.lowest = TRUE, labels = FALSE)
-
-# Now move the new column so that it sits next to the original column
-storedata <- storedata |> 
-  relocate(CompetitionDistance_dec, .after = CompetitionDistance)
-```
-
-```{r}
-# Promo2SinceWeek
-# WHAT IS GOING ON WITH THE PROMO VARIABLES? IT LOOKS LIKE THEY ARE SORTED BUT I AM NOT SURE
-```
-
-```{r}
-# Train data
-
-```
-
-```{r}
-# Test data
-```
-
-```{r}
+```{r, eval=FALSE, include=FALSE}
 # correlation plot to find multicollinearity
 numeric_df <- df[, sapply(df, is.numeric)]
 cor_matrix <- cor(numeric_df)
-corrplot(cor_matrix, method = "circle")
-cor(cor_matrix, method = "spearman")
-
+corrplot(cor_matrix,
+         type = "lower",
+         method = "square",
+         tl.srt = 45,
+         order = "hclust",
+         tl.cex = .5,
+         tl.col = "midnightblue",
+         col = COL2('BrBG', 10),
+         addCoef.col = "grey50",
+         number.cex = .45,
+         cl.pos = "b",
+         cl.length = 11,
+         cl.ratio = 0.1)
 ```
-
-
 ```{r}
-# Modelling
-m <- lm(Sales ~ 
-          Customers +
-          CompetitionDistance +
-          Promo +
-          Month +
-          WeekOfYear +
-          StoreType +
-          Assortment +
-          Promo2,
-        data = df)
+formula <- Sales ~ DayOfWeek + Open + Promo + StateHoliday + Year + Month + StoreType + Assortment + CompetitionDistance + Promo2
+m <- lm(formula, data = df)
 summary(m)
 
+library(car)
+vif(m)
+# tells me about multicollinearity - values less than 5 are OK
 
 ```
+
+```{r}
+hist(m$residuals)
+```
+```{r}
+x=m$fitted.values
+y=m$residuals
+plot(lm(y~x), which = 2)
+```
+```{r}
+# remove customers from df
+df <- df  |> select(-Customers)
+# Decision Tree
+library(tree)
+# Split the data into training and test sets
+set.seed(1234)
+train_index <- sample(1:nrow(df), nrow(df)*0.7)
+
+# train dataset formation
+train_set <- df[train_index, ]
+str(train_set)
+
+validation_set <- df[-train_index, ]
+
+library(rpart)
+library(caret)
+# use grid search for hyperparameter optimisation
+tune_grid <- expand.grid(cp = seq(0.01, 0.1, by = 0.01))
+dt_model <- train(formula,
+                  data = train_set,
+                  method = "rpart",
+                  trControl = trainControl(method = "cv", number = 5),
+                  tuneGrid = tune_grid)
+
+print(dt_model)
+
+predictions <- predict(dt_model, newdata = validation_set)
+
+# evaluate the perf
+postResample(predictions, validation_set$Sales)
+```
+
+```{r}
+# Random Forest model
+library(randomForest)
+rf_model <- randomForest(formula,
+                         data = train_set,
+                         ntree = 10,
+                         mtry = 3)
+
+print(rf_model)
+# seems to best so far with 69.32%
+predictions <- predict(rf_model, newdata = validation_set)
+
+# evaluate the perf
+postResample(predictions, validation_set$Sales)
+```
+```{r}
+# XGBoost
+install.packages("xgboost", dependencies = T)
+library(xgboost)
+train_set$StateHoliday <- as.factor(train_set$StateHoliday)
+validation_set$StateHoliday <- as.factor(validation_set$StateHoliday)
+
+train_set$Date <- as.factor(train_set$Date)
+validation_set$Date <- as.factor(validation_set$Date)
+
+train_set$PromoInterval <- as.factor(train_set$PromoInterval)
+validation_set$PromoInterval <- as.factor(validation_set$PromoInterval)
+
+train_set$start_date <- as.factor(train_set$start_date)
+validation_set$start_date <- as.factor(validation_set$start_date)
+
+
+# Identify categorical and continuous columns
+categorical_cols <- c('DayOfWeek', 'Open', 'Promo', 'StateHoliday', 'StoreType', 'Assortment', 'Year', 'Month')
+continuous_cols <- c('CompetitionDistance', 'Promo2')
+
+# One-hot encode categorical variables
+trainData_cat <- model.matrix(~ DayOfWeek + Open + Promo + StateHoliday + Year + Month + StoreType + Assortment - 1, data = trainData)
+testData_cat <- model.matrix(~ DayOfWeek + Open + Promo + StateHoliday + Year + Month + StoreType + Assortment - 1, data = testData)
+
+
+trainData <- model.matrix(~ DayOfWeek + Open + Promo + StateHoliday + Year + Month + StoreType + Assortment + CompetitionDistance + Promo2, data = train_set)
+testData <- model.matrix(~ DayOfWeek + Open + Promo + StateHoliday + Year + Month + StoreType + Assortment + CompetitionDistance + Promo2, data = validation_set)
+
+xgb_model <- xgboost(data = as.matrix(train_set[, -1]),
+                     label = train_set$Sales,
+                     nrounds = 10,
+                     objective = "reg:linear",
+                     verbose = 0)
+
+str(train_set)
+
+```
+
+
 
 
 
