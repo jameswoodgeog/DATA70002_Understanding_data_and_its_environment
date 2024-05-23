@@ -49,13 +49,15 @@ figcaption {
 }
 </style>
 ```
-
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 # Load the required libraries
 library(tidyverse)
 library(ggplot2)
 library(dplyr)
 library(corrplot)
+library(car)
+library(tree)
+library(kableExtra)
 ```
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
@@ -63,25 +65,39 @@ library(corrplot)
 df <- read.csv("Data/updated_training_data_with_store.csv")
 ```
 
-
 \newpage
 
 # Introduction
 
+Predicting sales is a vital part for any business across all sectors, from manufacturing, retail, logistics, to wholesale. However, this is one of the most difficult tasks a business can undertake due to the complexities involved. Sales are driven by a great deal of different factors such as the store location, macro scale of yearly seasonality, to the micro scales of the time of day and the day of the week, whether there is a promotion or what the weather is doing [@hasanAddressingSeasonalityTrend2024]. All of these things influence sales in different ways, so as you can see, this makes forecasting sales the ultimate challenge for a business.
+
+## Historic trend in sales
+
+As a company Rossmann, a part of the A S Watson group, is the market leader for health and beauty retail in Germany with around 100 stores. It also has over 4,500 stores across Europe, from Poland, Turkey to Spain, employing over 60,000 people [@aswatsongroupRossmann2024]. We have been asked to
+
 # Methodology
 
 ### Store data cleaning
-```{r, eval=FALSE, include=FALSE}
+
+Have a look at the structures of the stores data
+
+```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+
+```
+
+Describe the steps used to
+
+```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 table(df$StoreType)
-df$StoreType <- recode(df$StoreType, "a" = 1, "b" = 2, "c" = 3, "d" = 4)
+df$StoreType <- dplyr::recode(df$StoreType, "a" = 1, "b" = 2, "c" = 3, "d" = 4)
 table(df$StoreType)
 
 table(df$Assortment)
-df$Assortment <- recode(df$Assortment, "a" = 1, "b" = 2, "c" = 3)
+df$Assortment <- dplyr::recode(df$Assortment, "a" = 1, "b" = 2, "c" = 3)
 table(df$Assortment)
 ```
 
-```{r, eval=FALSE, include=FALSE}
+```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 # correlation plot to find multicollinearity
 numeric_df <- df[, sapply(df, is.numeric)]
 cor_matrix <- cor(numeric_df)
@@ -98,43 +114,50 @@ corrplot(cor_matrix,
          cl.pos = "b",
          cl.length = 11,
          cl.ratio = 0.1)
+remove(numeric_df, cor_matrix)
 ```
-```{r}
-formula <- Sales ~ DayOfWeek + Open + Promo + StateHoliday + Year + Month + StoreType + Assortment + CompetitionDistance + Promo2
-m <- lm(formula, data = df)
+
+```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+names(df)
+```
+
+```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+# remove customers from df
+mdata <- df  |> select(Store, Sales, DayOfWeek, Open, Promo, StateHoliday_Bool, Year, Month, StoreType, Assortment, CompetitionDistance, Promo2, WeekOfYear) |> 
+  arrange(Year, Month)
+
+formula <- Sales ~ DayOfWeek + Open + Promo + StateHoliday_Bool + Year + Month + StoreType + Assortment + CompetitionDistance + Promo2 + WeekOfYear
+m <- lm(formula, data = mdata)
 summary(m)
-
-library(car)
-vif(m)
 # tells me about multicollinearity - values less than 5 are OK
-
+vif(m)
 ```
 
-```{r}
+```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 hist(m$residuals)
 ```
-```{r}
+
+```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 x=m$fitted.values
 y=m$residuals
 plot(lm(y~x), which = 2)
+remove(x, y, m, cor_matrix)
 ```
-```{r}
-# remove customers from df
-df <- df  |> select(-Customers)
+
+```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+# Split the data into training and test sets using test = up to and including 2014, and validate = 2015
+train_set <- subset(mdata, Year <= 2014)
+validation_set <- subset(mdata, Year >= 2015)
+```
+
+### Decision Tree
+
+```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 # Decision Tree
-library(tree)
-# Split the data into training and test sets
-set.seed(1234)
-train_index <- sample(1:nrow(df), nrow(df)*0.7)
-
-# train dataset formation
-train_set <- df[train_index, ]
-str(train_set)
-
-validation_set <- df[-train_index, ]
-
 library(rpart)
 library(caret)
+library(MLmetrics)
+
 # use grid search for hyperparameter optimisation
 tune_grid <- expand.grid(cp = seq(0.01, 0.1, by = 0.01))
 dt_model <- train(formula,
@@ -145,13 +168,58 @@ dt_model <- train(formula,
 
 print(dt_model)
 
-predictions <- predict(dt_model, newdata = validation_set)
+# Plot the variable importances
+varImp(dt_model) |>  plot()
+
+
+tree_predictions <- predict(dt_model, newdata = validation_set)
 
 # evaluate the perf
-postResample(predictions, validation_set$Sales)
+postResample(tree_predictions, validation_set$Sales)
+remove(tune_grid, dt_model)
+
+# Do RMSPE
+# Remove missing values from actual and predicted values
+actual_values <- validation_set$Sales[!is.na(validation_set$Sales)]
+predicted_values <- tree_predictions[!is.na(validation_set$Sales)]
+
+# Replace zero values in predicted_values with a small constant
+predicted_values[predicted_values == 0] <- 1e-10
+
+# Calculate RMSPE using MLmetrics package
+RMSPE_value <- RMSPE(actual_values, predicted_values)
+
+# Print RMSPE
+cat("RMSPE:", round(RMSPE_value*100, 2),"%", "\n")
+
+
+# remove(actual_values, mean_squared_percentage_error, percentage_error, predicted_values, RMSPE, RMSPE_formatted, RMSPE_rounded, RMSPE_value, squared_percentage_error, tree_predictions, tune_grid)
 ```
 
-```{r}
+```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+# plot the actual v's predicted sales for this model
+tree_plot_data <- data.frame(actual = validation_set$Sales, predicted = tree_predictions) |> 
+  mutate(percentage_error = (actual - predicted) / actual * 100,
+         squared_percentage_error = percentage_error^2)
+```
+
+```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+tree_plot_data
+ggplot(tree_plot_data, aes(x = actual, y = predicted)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, color = "red") +
+  labs(title = "Actual vs Predicted Sales",
+       x = "Actual Sales",
+       y = "Predicted Sales") +
+  scale_x_continuous(labels = scales::comma,
+                     breaks = seq(0, 10000, by = 1000),
+                     limits = c(0, 10000)) +
+  scale_y_continuous(labels = scales::comma,
+                     breaks = seq(0, 10000, by = 1000),
+                     limits = c(0, 10000))
+```
+
+```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 # Random Forest model
 library(randomForest)
 rf_model <- randomForest(formula,
@@ -161,93 +229,172 @@ rf_model <- randomForest(formula,
 
 print(rf_model)
 # seems to best so far with 69.32%
-predictions <- predict(rf_model, newdata = validation_set)
+rf_predictions <- predict(rf_model, newdata = validation_set)
 
 # evaluate the perf
-postResample(predictions, validation_set$Sales)
+postResample(rf_predictions, validation_set$Sales)
+
+# Do RMSPE
+# Remove missing values from actual and predicted values
+actual_values <- validation_set$Sales[!is.na(validation_set$Sales)]
+predicted_values <- rf_predictions[!is.na(rf_predictions)]
+
+# Replace zero values in predicted_values with a small constant
+predicted_values[predicted_values == 0] <- 1e-10
+
+# Calculate RMSPE using MLmetrics package
+RMSPE_value <- RMSPE(actual_values, predicted_values)
+
+# Print RMSPE
+cat("RMSPE:", round(RMSPE_value*100, 2),"%", "\n")
+
+
+# remove(actual_values, mean_squared_percentage_error, percentage_error, predicted_values, RMSPE, RMSPE_formatted, RMSPE_rounded, RMSPE_value, squared_percentage_error, tree_predictions, tune_grid)
+# remove(rf_model)
 ```
-```{r}
+
+```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 # XGBoost
-install.packages("xgboost", dependencies = T)
 library(xgboost)
-train_set$StateHoliday <- as.factor(train_set$StateHoliday)
-validation_set$StateHoliday <- as.factor(validation_set$StateHoliday)
-
-train_set$Date <- as.factor(train_set$Date)
-validation_set$Date <- as.factor(validation_set$Date)
-
-train_set$PromoInterval <- as.factor(train_set$PromoInterval)
-validation_set$PromoInterval <- as.factor(validation_set$PromoInterval)
-
-train_set$start_date <- as.factor(train_set$start_date)
-validation_set$start_date <- as.factor(validation_set$start_date)
-
-
-# Identify categorical and continuous columns
-categorical_cols <- c('DayOfWeek', 'Open', 'Promo', 'StateHoliday', 'StoreType', 'Assortment', 'Year', 'Month')
-continuous_cols <- c('CompetitionDistance', 'Promo2')
-
-# One-hot encode categorical variables
-trainData_cat <- model.matrix(~ DayOfWeek + Open + Promo + StateHoliday + Year + Month + StoreType + Assortment - 1, data = trainData)
-testData_cat <- model.matrix(~ DayOfWeek + Open + Promo + StateHoliday + Year + Month + StoreType + Assortment - 1, data = testData)
-
-
-trainData <- model.matrix(~ DayOfWeek + Open + Promo + StateHoliday + Year + Month + StoreType + Assortment + CompetitionDistance + Promo2, data = train_set)
-testData <- model.matrix(~ DayOfWeek + Open + Promo + StateHoliday + Year + Month + StoreType + Assortment + CompetitionDistance + Promo2, data = validation_set)
-
-xgb_model <- xgboost(data = as.matrix(train_set[, -1]),
-                     label = train_set$Sales,
-                     nrounds = 10,
-                     objective = "reg:linear",
-                     verbose = 0)
 
 str(train_set)
+str(validation_set)
+ 
+train_matrix <- xgb.DMatrix(data = as.matrix(train_set |> select(-Sales)), label = train_set$Sales)
+str(train_set)
+
+validation_matrix <- xgb.DMatrix(data = as.matrix(validation_set |> select(-Sales)), label = validation_set$Sales)
+ 
+# Set parameters
+params <- list(
+  objective = "reg:squarederror",  # For regression tasks
+  eval_metric = "rmse",            # Root Mean Squared Error
+  max_depth = 6,                   # Maximum depth of a tree
+  eta = 0.1,                       # Learning rate
+  subsample = 0.8,                 # Subsample ratio of the training instance
+  colsample_bytree = 0.8           # Subsample ratio of columns when constructing each tree
+)
+ 
+#simple model which somehow lets the below model run
+set.seed(123)
+xgb_model <- xgb.train(
+  params = params,
+  data = train_matrix,
+  nrounds = 1000,
+  verbose = 1
+)
+ 
+# Train the model
+set.seed(123)  # For reproducibility
+xgb_model <- xgb.train(
+  params = params,
+  data = train_matrix,
+  nrounds = 1000,               # Number of boosting rounds
+  watchlist = list(train = train_matrix, validate = validation_matrix),
+  early_stopping_rounds = 10,  # Stop if no improvement after 10 rounds
+  verbose = 1                  # Print training log
+)
+
+# seems to best so far with 69.32%
+# Predict on validation set
+xgb_predictions <- predict(xgb_model, validation_matrix)
+
+# evaluate the perf
+postResample(xgb_predictions, validation_set$Sales)
+
+
+# Do RMSPE
+# Remove missing values from actual and predicted values
+actual_values <- validation_set$Sales[!is.na(validation_set$Sales)]
+predicted_values <- xgb_predictions[!is.na(xgb_predictions)]
+
+# Replace zero values in predicted_values with a small constant
+predicted_values[predicted_values == 0] <- 1e-10
+
+# Calculate RMSPE using MLmetrics package
+RMSPE_value <- RMSPE(actual_values, predicted_values)
+
+# Print RMSPE
+cat("RMSPE:", round(RMSPE_value*100, 2),"%", "\n")
+```
+
+```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+# Final Predictions using XGB_Model
+# Join the store and tesdata
+test_data <- read.csv("Data/clean_test_data.csv")
+store_data <- read.csv("Data/clean_store_data.csv")
+```
+
+```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+# Merge the data
+sales_prediction_data <- merge(test_data, store_data, by = "Store") |> 
+  arrange(Year, Month)
+```
+
+```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+# Use XGBoost model to predict the sales_prediction_data from the mdata
+sales_prediction_data <- sales_prediction_data  |> select(Sales, DayOfWeek, Open, Promo, StateHoliday_Bool, Year, Month, StoreType, Assortment, CompetitionDistance, Promo2)
+
+sales_prediction_data$StoreType <- dplyr::recode(sales_prediction_data$StoreType, "a" = 1, "b" = 2, "c" = 3, "d" = 4)
+
+sales_prediction_data$Assortment <- dplyr::recode(sales_prediction_data$Assortment, "a" = 1, "b" = 2, "c" = 3)
+
+model_matrix <- xgb.DMatrix(data = as.matrix(mdata |> select(-Sales)), label = mdata$Sales)
+str(train_set)
+
+sales_prediction_data$Sales[is.na(sales_prediction_data$Sales)] <- 0
+
+sales_prediction_matrix <- xgb.DMatrix(data = as.matrix(sales_prediction_data |> select(-Sales)), label = sales_prediction_data$Sales)
+
+str(sales_prediction_data)
+sales_prediction_data$Sales <- predict(xgb_model, sales_prediction_matrix)
+```
+
+```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+# Plot a yearly timeseries of sales for the muppets in Rossmann, and use both datasets (sales_prediction and mdata)
+plot_data <- mdata |> 
+  mutate(Month_Year = format(as.Date(paste0(Year, "-", Month, "-01")), "%b %Y"))  |> 
+  group_by(Month_Year)  |> 
+  summarise(Total_Sales_Month = sum(Sales),
+            Year = first(Year),
+            Month = first(Month)) |> 
+  arrange(Year, Month)
+
+plot_data <- plot_data |> 
+  mutate(Month_Year = as.Date(paste0(Year, "-", Month, "-01"), "%Y-%m-%d"))
+
+pred_plot_data <- sales_prediction_data |> 
+  mutate(Month_Year = format(as.Date(paste0(Year, "-", Month, "-01")), "%b %Y"))  |> 
+  group_by(Month_Year)  |> 
+  summarise(Total_Sales_Month = sum(Sales),
+            Year = first(Year),
+            Month = first(Month)) |> 
+  arrange(Year, Month)
+
+pred_plot_data <- pred_plot_data |> 
+  mutate(Month_Year = as.Date(paste0(Year, "-", Month, "-01"), "%Y-%m-%d"))
+
+
+ggplot(plot_data, aes(x = Month_Year, y = Total_Sales_Month)) +
+  geom_line(data = pred_plot_data, aes(x = Month_Year, y = Total_Sales_Month, color = "Predicted Sales")) +
+  geom_point() +
+  geom_line() +
+  geom_point() +
+  labs(title = "Total Sales by Month and Year",
+       x = "Month-Year",
+       y = "Total Sales") +
+  scale_x_date(date_breaks = "6 months",
+               date_labels = "%b %Y",
+               minor_breaks = "month",
+               labels = NULL) +
+  scale_y_continuous(labels = scales::comma)
+
+
+
 
 ```
 
-
-
-
-
-
-
-
-
-
-
-
 Review the available data and describe it in terms of its variables, quality, and relevance to the sales forecasting
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 Link data sets together as appropriate
 
