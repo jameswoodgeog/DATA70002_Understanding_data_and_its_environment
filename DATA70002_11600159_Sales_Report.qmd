@@ -70,6 +70,7 @@ library(kableExtra)
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 # Load the data
 df <- read.csv("Data/updated_training_data_with_store.csv")
+str(df)
 ```
 
 \newpage
@@ -138,7 +139,7 @@ mdata <- df  |> select(Store, Sales, DayOfWeek, Open, Promo, StateHoliday_Bool, 
 
 ```{r}
 # create a linear model
-formula <- Sales ~ DayOfWeek + Open + Promo + StateHoliday_Bool + Year + Month + StoreType + Assortment + CompetitionDistance + Promo2 + WeekOfYear
+formula <- Sales ~ DayOfWeek + Open + Promo + StateHoliday_Bool + Year + Month + StoreType + Assortment + CompetitionDistance + Promo2 + WeekOfYear + Store
 
 # Run the model and show the summary
 m <- lm(formula, data = mdata)
@@ -151,7 +152,7 @@ vif(m)
 ```{r}
 # rerun the model without the variables that have a high VIF
 # create a linear model
-formula <- Sales ~ DayOfWeek + Open + Promo + StateHoliday_Bool + Year + Month + StoreType + Assortment + CompetitionDistance + Promo2
+formula <- Sales ~ DayOfWeek + Open + Promo + StateHoliday_Bool + Year + Month + StoreType + Assortment + CompetitionDistance + Promo2 + Store
 
 # Run the model and show the summary
 m <- lm(formula, data = mdata)
@@ -179,11 +180,14 @@ remove(x, y)
 
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
-# Split the data into training and test sets using test = up to and including 2014, and validate = 2015
+# Split the data into training and test sets using test = up to and including 2014, and validate = /015 - This works out to about 70/30
 # Sort the data by year and month
 mdata <- mdata |> arrange(Year, Month)
+str(mdata)
 train_set <- subset(mdata, Year <= 2014)
+str(train_set)
 validation_set <- subset(mdata, Year >= 2015)
+str(validation_set)
 ```
 
 ### Decision Tree
@@ -199,14 +203,17 @@ tune_grid <- expand.grid(cp = seq(0.01, 0.1, by = 0.01))
 dt_model <- train(formula,
                   data = train_set,
                   method = "rpart",
-                  trControl = trainControl(method = "cv", number = 5),
+                  trControl = trainControl(method = "cv",
+                                           number = 5),
                   tuneGrid = tune_grid)
+```
 
-# print(dt_model)
 
+```{r}
 # Plot the variable importances
 varImp(dt_model) |>  plot()
 ```
+
 
 ```{r}
 tree_predictions <- predict(dt_model, newdata = validation_set)
@@ -214,6 +221,7 @@ tree_predictions <- predict(dt_model, newdata = validation_set)
 # evaluate the perf
 postResample(tree_predictions, validation_set$Sales)
 ```
+
 ```{r}
 # Do RMSPE
 # Remove missing values from actual and predicted values
@@ -230,22 +238,28 @@ dt_RMSPE_value <- RMSPE(dt_actual_values, dt_predicted_values)
 cat("RMSPE:", round(dt_RMSPE_value*100, 2),"%", "\n")
 ```
 
-```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
-# # plot the actual v's predicted sales for this model
-# tree_plot_data <- data.frame(actual = validation_set$Sales, predicted = tree_predictions) |> 
-#   mutate(percentage_error = (actual - predicted) / actual * 100,
-#          squared_percentage_error = percentage_error^2)
-```
+```{r}
+# Assuming your validation_set contains the Month column along with Sales
+# Create a data frame with Month, Actual Sales, and Predicted Sales
+dt_plot_data <- data.frame(Month = validation_set$Month,
+                        Actual_Sales = validation_set$Sales,
+                        Predicted_Sales = tree_predictions)
 
-```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
-# compare the actual vs predicted values
-# ggplot(tree_plot_data, aes(x = actual, y = predicted)) +
-#   geom_point() +
-#   geom_abline(intercept = 0, slope = 1, color = "red") +
-#   labs(title = "Actual vs Predicted Sales",
-#        x = "Actual Sales",
-#        y = "Predicted Sales")
+# Calculate average sales per month
+avg_sales <- dt_plot_data  |> 
+  group_by(Month) |> 
+  summarise(Avg_Actual_Sales = mean(Actual_Sales, na.rm = TRUE),
+            Avg_Predicted_Sales = mean(Predicted_Sales, na.rm = TRUE))
 
+# Plot using ggplot2
+ggplot(avg_sales, aes(x = Month)) +
+  geom_line(aes(y = Avg_Actual_Sales, color = "Actual Sales")) +
+  geom_line(aes(y = Avg_Predicted_Sales, color = "Predicted Sales")) +
+  labs(title = "Average Actual vs Predicted Sales per Month",
+       y = "Average Sales",
+       color = "Sales Type") +
+  scale_color_manual(values = c("Actual Sales" = "blue", "Predicted Sales" = "red")) +
+  theme_minimal()
 ```
 
 ### Random Forest
@@ -259,7 +273,7 @@ rf_model <- randomForest(formula,
                          mtry = 3)
 
 print(rf_model)
-# seems to best so far with 69.32%
+# seems to best so far with 76.39%
 ```
 
 ```{r}
@@ -283,6 +297,31 @@ rf_RMSPE_value <- RMSPE(rf_actual_values, rf_predicted_values)
 # Print RMSPE
 cat("RMSPE:", round(rf_RMSPE_value*100, 2),"%", "\n")
 ```
+
+```{r}
+# Assuming your validation_set contains the Month column along with Sales
+# Create a data frame with Month, Actual Sales, and Predicted Sales
+plot_data_rf <- data.frame(Month = validation_set$Month,
+                           Actual_Sales = validation_set$Sales,
+                           Predicted_Sales = rf_predictions)
+
+# Calculate average sales per month
+avg_sales_rf <- plot_data_rf %>%
+  group_by(Month) %>%
+  summarise(Avg_Actual_Sales = mean(Actual_Sales, na.rm = TRUE),
+            Avg_Predicted_Sales = mean(Predicted_Sales, na.rm = TRUE))
+
+# Plot using ggplot2
+ggplot(avg_sales_rf, aes(x = Month)) +
+  geom_line(aes(y = Avg_Actual_Sales, color = "Actual Sales")) +
+  geom_line(aes(y = Avg_Predicted_Sales, color = "Predicted Sales")) +
+  labs(title = "Average Actual vs Predicted Sales per Month (Random Forest)",
+       y = "Average Sales",
+       color = "Sales Type") +
+  scale_color_manual(values = c("Actual Sales" = "blue", "Predicted Sales" = "red")) +
+  theme_minimal()
+```
+
 ### XGBoost
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
@@ -291,11 +330,11 @@ cat("RMSPE:", round(rf_RMSPE_value*100, 2),"%", "\n")
 
 str(train_set)
 str(validation_set)
+# -Store, -WeekOfYear
  
 train_matrix <- xgb.DMatrix(data = as.matrix(train_set |> select(-Sales)), label = train_set$Sales)
-str(train_set)
-
-validation_matrix <- xgb.DMatrix(data = as.matrix(validation_set |> select(-Sales)), label = validation_set$Sales)
+    
+validation_matrix <- xgb.DMatrix(data = as.matrix(validation_set |> select(-Sales, )), label = validation_set$Sales)
  
 # Set parameters
 params <- list(
@@ -307,14 +346,14 @@ params <- list(
   colsample_bytree = 0.8           # Subsample ratio of columns when constructing each tree
 )
  
-# simple model which somehow lets the below model run
-set.seed(123)
-xgb_model <- xgb.train(
-  params = params,
-  data = train_matrix,
-  nrounds = 1000,
-  verbose = 1
-)
+# # simple model which somehow lets the below model run
+# set.seed(123)
+# xgb_model <- xgb.train(
+#   params = params,
+#   data = train_matrix,
+#   nrounds = 1000,
+#   verbose = 1
+# )
  
 # Train the model
 set.seed(123)  # For reproducibility
@@ -351,6 +390,32 @@ xg_RMSPE_value <- RMSPE(xg_actual_values, xg_predicted_values)
 cat("RMSPE:", round(xg_RMSPE_value*100, 2),"%", "\n")
 ```
 
+
+```{r}
+# Assuming your validation_set contains the Month column along with Sales
+# Create a data frame with Month, Actual Sales, and Predicted Sales
+plot_data_xgb <- data.frame(Month = validation_set$Month,
+                            Actual_Sales = validation_set$Sales,
+                            Predicted_Sales = xgb_predictions)
+
+# Calculate average sales per month
+avg_sales_xgb <- plot_data_xgb %>%
+  group_by(Month) %>%
+  summarise(Avg_Actual_Sales = mean(Actual_Sales, na.rm = TRUE),
+            Avg_Predicted_Sales = mean(Predicted_Sales, na.rm = TRUE))
+
+# Plot using ggplot2
+ggplot(avg_sales_xgb, aes(x = Month)) +
+  geom_line(aes(y = Avg_Actual_Sales, color = "Actual Sales")) +
+  geom_line(aes(y = Avg_Predicted_Sales, color = "Predicted Sales")) +
+  labs(title = "Average Actual vs Predicted Sales per Month (XGBoost)",
+       y = "Average Sales",
+       color = "Sales Type") +
+  scale_color_manual(values = c("Actual Sales" = "blue", "Predicted Sales" = "red")) +
+  theme_minimal()
+```
+
+
 ### USE XGBOOST MODEL TO PREDICT SALES
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
@@ -368,22 +433,72 @@ sales_prediction_data <- merge(test_data, store_data, by = "Store") |>
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 # Use XGBoost model to predict the sales_prediction_data from the mdata
-sales_prediction_data <- sales_prediction_data  |> select(Sales, DayOfWeek, Open, Promo, StateHoliday_Bool, Year, Month, StoreType, Assortment, CompetitionDistance, Promo2)
+sales_prediction_data <- sales_prediction_data  |> select(Store, DayOfWeek, Open, Promo, StateHoliday_Bool, Year, Month, StoreType, Assortment, CompetitionDistance, Promo2, WeekOfYear, Sales)
 
 sales_prediction_data$StoreType <- dplyr::recode(sales_prediction_data$StoreType, "a" = 1, "b" = 2, "c" = 3, "d" = 4)
 
 sales_prediction_data$Assortment <- dplyr::recode(sales_prediction_data$Assortment, "a" = 1, "b" = 2, "c" = 3)
 
 model_matrix <- xgb.DMatrix(data = as.matrix(mdata |> select(-Sales)), label = mdata$Sales)
-str(train_set)
 
 sales_prediction_data$Sales[is.na(sales_prediction_data$Sales)] <- 0
+str(sales_prediction_data)
 
 sales_prediction_matrix <- xgb.DMatrix(data = as.matrix(sales_prediction_data |> select(-Sales)), label = sales_prediction_data$Sales)
+str(sales_prediction_matrix)
 
-str(sales_prediction_data)
+
 sales_prediction_data$Sales <- predict(xgb_model, sales_prediction_matrix)
+str(sales_prediction_data)
 ```
+
+```{r}
+# Convert Date to POSIXct format
+sales_prediction_data$Month <- as.POSIXct(sales_prediction_data$Month)
+
+# Create a time series plot
+ggplot(sales_prediction_data, aes(x = Month, y = Sales)) +
+  geom_line(color = "blue") +
+  labs(title = "Predicted Sales Over Time",
+       y = "Sales",
+       x = "Date") +
+  theme_minimal()
+```
+# START HERE
+```{r}
+# Assuming your sales_prediction_data contains Month, Sales, and Store columns
+# and df contains Month, Sales, and Store columns
+
+# Find the common stores
+common_stores <- intersect(sales_prediction_data$Store, df$Store)
+
+# Filter the data to include only common stores
+sales_prediction_data_filtered <- sales_prediction_data %>%
+  filter(Store %in% common_stores)
+
+df_filtered <- df %>%
+  filter(Store %in% common_stores)
+
+# Aggregate predicted sales by Month and Store
+agg_sales_prediction <- sales_prediction_data_filtered %>%
+  group_by(Month, Store) %>%
+  summarise(Predicted_Sales = mean(Sales, na.rm = TRUE))
+
+# Merge with actual sales data
+merged_data <- merge(agg_sales_prediction, df_filtered, by = c("Month", "Store"), all = TRUE)
+
+# Create a time series plot
+ggplot(merged_data, aes(x = Month)) +
+  geom_line(aes(y = Predicted_Sales), color = "blue", linetype = "dashed") +
+  geom_line(aes(y = Sales), color = "red") +
+  labs(title = "Predicted vs Actual Sales (Common Stores Only)",
+       y = "Sales",
+       x = "Month") +
+  theme_minimal()
+```
+
+
+
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 # Plot a yearly timeseries of sales for the muppets in Rossmann, and use both datasets (sales_prediction and mdata)
@@ -423,10 +538,6 @@ ggplot(plot_data, aes(x = Month_Year, y = Total_Sales_Month)) +
                minor_breaks = "month",
                labels = NULL) +
   scale_y_continuous(labels = scales::comma)
-
-
-
-
 ```
 
 Review the available data and describe it in terms of its variables, quality, and relevance to the sales forecasting
