@@ -49,6 +49,8 @@ figcaption {
 }
 </style>
 ```
+
+
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 # Load the required libraries
 library(tidyverse)
@@ -57,6 +59,11 @@ library(dplyr)
 library(corrplot)
 library(car)
 library(tree)
+library(rpart)
+library(caret)
+library(MLmetrics)
+library(randomForest)
+library(xgboost)
 library(kableExtra)
 ```
 
@@ -81,13 +88,10 @@ As a company Rossmann, a part of the A S Watson group, is the market leader for 
 
 Have a look at the structures of the stores data
 
-```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
-
-```
-
 Describe the steps used to
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+# Recode the storetype and assortment columns
 table(df$StoreType)
 df$StoreType <- dplyr::recode(df$StoreType, "a" = 1, "b" = 2, "c" = 3, "d" = 4)
 table(df$StoreType)
@@ -114,21 +118,47 @@ corrplot(cor_matrix,
          cl.pos = "b",
          cl.length = 11,
          cl.ratio = 0.1)
+
+```
+
+```{r}
 remove(numeric_df, cor_matrix)
 ```
+
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 names(df)
 ```
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
-# remove customers from df
+# create a new dataframe from df that does not include customers
 mdata <- df  |> select(Store, Sales, DayOfWeek, Open, Promo, StateHoliday_Bool, Year, Month, StoreType, Assortment, CompetitionDistance, Promo2, WeekOfYear) |> 
   arrange(Year, Month)
+```
 
+```{r}
+# create a linear model
 formula <- Sales ~ DayOfWeek + Open + Promo + StateHoliday_Bool + Year + Month + StoreType + Assortment + CompetitionDistance + Promo2 + WeekOfYear
+
+# Run the model and show the summary
 m <- lm(formula, data = mdata)
 summary(m)
+```
+```{r}
+# tells me about multicollinearity - values less than 5 are OK
+vif(m)
+```
+```{r}
+# rerun the model without the variables that have a high VIF
+# create a linear model
+formula <- Sales ~ DayOfWeek + Open + Promo + StateHoliday_Bool + Year + Month + StoreType + Assortment + CompetitionDistance + Promo2
+
+# Run the model and show the summary
+m <- lm(formula, data = mdata)
+summary(m)
+```
+
+```{r}
 # tells me about multicollinearity - values less than 5 are OK
 vif(m)
 ```
@@ -141,11 +171,17 @@ hist(m$residuals)
 x=m$fitted.values
 y=m$residuals
 plot(lm(y~x), which = 2)
-remove(x, y, m, cor_matrix)
 ```
+
+```{r}
+remove(x, y)
+```
+
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 # Split the data into training and test sets using test = up to and including 2014, and validate = 2015
+# Sort the data by year and month
+mdata <- mdata |> arrange(Year, Month)
 train_set <- subset(mdata, Year <= 2014)
 validation_set <- subset(mdata, Year >= 2015)
 ```
@@ -154,9 +190,9 @@ validation_set <- subset(mdata, Year >= 2015)
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 # Decision Tree
-library(rpart)
-library(caret)
-library(MLmetrics)
+#library(rpart)
+#library(caret)
+#library(MLmetrics)
 
 # use grid search for hyperparameter optimisation
 tune_grid <- expand.grid(cp = seq(0.01, 0.1, by = 0.01))
@@ -166,62 +202,57 @@ dt_model <- train(formula,
                   trControl = trainControl(method = "cv", number = 5),
                   tuneGrid = tune_grid)
 
-print(dt_model)
+# print(dt_model)
 
 # Plot the variable importances
 varImp(dt_model) |>  plot()
+```
 
-
+```{r}
 tree_predictions <- predict(dt_model, newdata = validation_set)
 
 # evaluate the perf
 postResample(tree_predictions, validation_set$Sales)
-remove(tune_grid, dt_model)
-
+```
+```{r}
 # Do RMSPE
 # Remove missing values from actual and predicted values
-actual_values <- validation_set$Sales[!is.na(validation_set$Sales)]
-predicted_values <- tree_predictions[!is.na(validation_set$Sales)]
+dt_actual_values <- validation_set$Sales[!is.na(validation_set$Sales)]
+dt_predicted_values <- tree_predictions[!is.na(validation_set$Sales)]
 
 # Replace zero values in predicted_values with a small constant
-predicted_values[predicted_values == 0] <- 1e-10
+dt_predicted_values[dt_predicted_values == 0] <- 1e-10
 
 # Calculate RMSPE using MLmetrics package
-RMSPE_value <- RMSPE(actual_values, predicted_values)
+dt_RMSPE_value <- RMSPE(dt_actual_values, dt_predicted_values)
 
 # Print RMSPE
-cat("RMSPE:", round(RMSPE_value*100, 2),"%", "\n")
-
-
-# remove(actual_values, mean_squared_percentage_error, percentage_error, predicted_values, RMSPE, RMSPE_formatted, RMSPE_rounded, RMSPE_value, squared_percentage_error, tree_predictions, tune_grid)
+cat("RMSPE:", round(dt_RMSPE_value*100, 2),"%", "\n")
 ```
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
-# plot the actual v's predicted sales for this model
-tree_plot_data <- data.frame(actual = validation_set$Sales, predicted = tree_predictions) |> 
-  mutate(percentage_error = (actual - predicted) / actual * 100,
-         squared_percentage_error = percentage_error^2)
+# # plot the actual v's predicted sales for this model
+# tree_plot_data <- data.frame(actual = validation_set$Sales, predicted = tree_predictions) |> 
+#   mutate(percentage_error = (actual - predicted) / actual * 100,
+#          squared_percentage_error = percentage_error^2)
 ```
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
-tree_plot_data
-ggplot(tree_plot_data, aes(x = actual, y = predicted)) +
-  geom_point() +
-  geom_abline(intercept = 0, slope = 1, color = "red") +
-  labs(title = "Actual vs Predicted Sales",
-       x = "Actual Sales",
-       y = "Predicted Sales") +
-  scale_x_continuous(labels = scales::comma,
-                     breaks = seq(0, 10000, by = 1000),
-                     limits = c(0, 10000)) +
-  scale_y_continuous(labels = scales::comma,
-                     breaks = seq(0, 10000, by = 1000),
-                     limits = c(0, 10000))
+# compare the actual vs predicted values
+# ggplot(tree_plot_data, aes(x = actual, y = predicted)) +
+#   geom_point() +
+#   geom_abline(intercept = 0, slope = 1, color = "red") +
+#   labs(title = "Actual vs Predicted Sales",
+#        x = "Actual Sales",
+#        y = "Predicted Sales")
+
 ```
+
+### Random Forest
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 # Random Forest model
-library(randomForest)
+# library(randomForest)
 rf_model <- randomForest(formula,
                          data = train_set,
                          ntree = 10,
@@ -229,6 +260,10 @@ rf_model <- randomForest(formula,
 
 print(rf_model)
 # seems to best so far with 69.32%
+```
+
+```{r}
+# Predictions
 rf_predictions <- predict(rf_model, newdata = validation_set)
 
 # evaluate the perf
@@ -236,26 +271,23 @@ postResample(rf_predictions, validation_set$Sales)
 
 # Do RMSPE
 # Remove missing values from actual and predicted values
-actual_values <- validation_set$Sales[!is.na(validation_set$Sales)]
-predicted_values <- rf_predictions[!is.na(rf_predictions)]
+rf_actual_values <- validation_set$Sales[!is.na(validation_set$Sales)]
+rf_predicted_values <- rf_predictions[!is.na(rf_predictions)]
 
 # Replace zero values in predicted_values with a small constant
-predicted_values[predicted_values == 0] <- 1e-10
+rf_predicted_values[rf_predicted_values == 0] <- 1e-10
 
 # Calculate RMSPE using MLmetrics package
-RMSPE_value <- RMSPE(actual_values, predicted_values)
+rf_RMSPE_value <- RMSPE(rf_actual_values, rf_predicted_values)
 
 # Print RMSPE
-cat("RMSPE:", round(RMSPE_value*100, 2),"%", "\n")
-
-
-# remove(actual_values, mean_squared_percentage_error, percentage_error, predicted_values, RMSPE, RMSPE_formatted, RMSPE_rounded, RMSPE_value, squared_percentage_error, tree_predictions, tune_grid)
-# remove(rf_model)
+cat("RMSPE:", round(rf_RMSPE_value*100, 2),"%", "\n")
 ```
+### XGBoost
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 # XGBoost
-library(xgboost)
+# library(xgboost)
 
 str(train_set)
 str(validation_set)
@@ -275,7 +307,7 @@ params <- list(
   colsample_bytree = 0.8           # Subsample ratio of columns when constructing each tree
 )
  
-#simple model which somehow lets the below model run
+# simple model which somehow lets the below model run
 set.seed(123)
 xgb_model <- xgb.train(
   params = params,
@@ -301,22 +333,25 @@ xgb_predictions <- predict(xgb_model, validation_matrix)
 
 # evaluate the perf
 postResample(xgb_predictions, validation_set$Sales)
+```
 
-
+```{r}
 # Do RMSPE
 # Remove missing values from actual and predicted values
-actual_values <- validation_set$Sales[!is.na(validation_set$Sales)]
-predicted_values <- xgb_predictions[!is.na(xgb_predictions)]
+xg_actual_values <- validation_set$Sales[!is.na(validation_set$Sales)]
+xg_predicted_values <- xgb_predictions[!is.na(xgb_predictions)]
 
 # Replace zero values in predicted_values with a small constant
-predicted_values[predicted_values == 0] <- 1e-10
+xg_predicted_values[xg_predicted_values == 0] <- 1e-10
 
 # Calculate RMSPE using MLmetrics package
-RMSPE_value <- RMSPE(actual_values, predicted_values)
+xg_RMSPE_value <- RMSPE(xg_actual_values, xg_predicted_values)
 
 # Print RMSPE
-cat("RMSPE:", round(RMSPE_value*100, 2),"%", "\n")
+cat("RMSPE:", round(xg_RMSPE_value*100, 2),"%", "\n")
 ```
+
+### USE XGBOOST MODEL TO PREDICT SALES
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 # Final Predictions using XGB_Model
