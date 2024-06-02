@@ -461,77 +461,37 @@ sales_prediction_data$Sales <- predict(xgb_model, sales_prediction_matrix)
 str(sales_prediction_data)
 ```
 
-# START HERE
-
-```{r}
-# Get the average sales per week of year
-hist_avg_sales_per_week <- df |> group_by(Year, WeekOfYear) |> summarise(Avg_Sales = mean(Sales, na.rm = TRUE))
-str(hist_avg_sales_per_week)
-
-# Get the predicted average sales per week
-pred_avg_sales_per_week <- sales_prediction_data |> group_by(Year, WeekOfYear) |> summarise(Avg_Sales = mean(Sales, na.rm = TRUE))
-str(sales_prediction_data)
-
-# Plot them both on the y axis and the week of year on the x axis using ggplot2
-ggplot(hist_avg_sales_per_week, aes(x = WeekOfYear, y = Avg_Sales)) +
-  geom_line(aes(y = Avg_Sales, color = "Actual Sales")) +
-  geom_line(data = pred_avg_sales_per_week, aes(y = Avg_Sales, color = "Predicted Sales")) +
-  labs(title = "Average Actual vs Predicted Sales per Week of Year",
-       y = "Average Sales",
-       color = "Sales Type") +
-  scale_color_manual(values = c("Actual Sales" = "blue", "Predicted Sales" = "red")) +
-  theme_minimal()
-
-# and plot using ggplot2 this in the y axs against the week of year on the x axis
-ggplot(hist_avg_sales_per_week, aes(x = WeekOfYear, y = Avg_Sales)) +
-  geom_line() +
-  labs(title = "Average Sales per Week of Year",
-       x = "Week of Year",
-       y = "Average Sales") +
-  theme_minimal()
-```
-
+# Plotting the final sales results
 
 ```{r}
 # Plot the historic sales data for the stores that appear in both the actual and predicted sales data
 # Get the stores that appear in both the actual sales data and predicted sales data
-hist_sales <- df |> filter(df$Store %in% sales_prediction_data$Store)
+hist_sales <- df |>
+  filter(df$Store %in% sales_prediction_data$Store)
 hist_sales <- hist_sales |> filter(hist_sales$Month %in% sales_prediction_data$Month)
 hist_sales <- hist_sales |> filter(hist_sales$WeekOfYear %in% sales_prediction_data$WeekOfYear)
 # Get the predicted average sales per week
-# hist_sales <- hist_sales |> group_by(Year, WeekOfYear) |> summarise(Avg_Sales = mean(Sales, na.rm = TRUE))
-hist_sales <- hist_sales |> group_by(Store, Year, Month, WeekOfYear, Date) |> summarise(avg_hist_sales = mean(Sales, na.rm = TRUE))
-str(hist_sales)
+hist_sales <- hist_sales |> group_by(DayOfWeek) |> summarise(avg_hist_sales = mean(Sales, na.rm = TRUE))
 
-hist_sales$WeekOfYear <- as.numeric(hist_sales$WeekOfYear)
-str(hist_sales)
+# do the same for the sales_prediction_data
+pred_avg_sales_per_week <- sales_prediction_data |> group_by(DayOfWeek) |> summarise(avg_pred_sales = mean(Sales, na.rm = TRUE))
+
 ```
-
 
 ```{r}
-# plot the hist_sales on the y axis and predicted sales on the y axis and the relevant months on the x axis
-# Ensure WeekOfYear is treated as a numeric variable
-hist_sales$WeekOfYear <- as.numeric(hist_sales$WeekOfYear)
-
-# Order the data by WeekOfYear
-hist_sales <- hist_sales[order(hist_sales$WeekOfYear), ]
-
-# Plot the data with geom_smooth
-ggplot(hist_sales, aes(x = WeekOfYear, y = avg_hist_sales)) +
-  geom_smooth(aes(color = "Predicted Sales"), method = "loess", se = FALSE) +
-  labs(title = "Actual vs Predicted Sales per Week of Year",
-       x = "Week of Year",
-       y = "Sales",
-       color = "Sales Type") +
-  scale_color_manual(values = c("Predicted Sales" = "red")) +
-  theme_minimal()
+str(hist_sales)
+ggplot(hist_sales, aes(x = DayOfWeek, y = avg_hist_sales)) +
+  geom_line(aes(y = avg_hist_sales,
+                colour = "Actual Daily Sales")) +
+  geom_line(data = pred_avg_sales_per_week,
+            aes(y = avg_pred_sales, colour = "Predicted Daily Sales")) +
+  scale_color_manual(values = c("Actual Daily Sales" = "royalblue4", "Predicted Daily Sales" = "orangered3")) +
+  labs(title = "Average Actual vs Predicted Sales per Week of Year",
+       y = "Average Sales",
+       color = "Sales Type")
 ```
 
 
-
-```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
-
-```
 
 Review the available data and describe it in terms of its variables, quality, and relevance to the sales forecasting
 
