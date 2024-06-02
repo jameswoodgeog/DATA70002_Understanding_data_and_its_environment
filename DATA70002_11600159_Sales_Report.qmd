@@ -427,19 +427,29 @@ store_data <- read.csv("Data/clean_store_data.csv")
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 # Merge the data
+str(test_data) #41088
+str(store_data) #1115
+
 sales_prediction_data <- merge(test_data, store_data, by = "Store") |> 
   arrange(Year, Month)
+
+str(sales_prediction_data) #41088
 ```
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
 # Use XGBoost model to predict the sales_prediction_data from the mdata
 sales_prediction_data <- sales_prediction_data  |> select(Store, DayOfWeek, Open, Promo, StateHoliday_Bool, Year, Month, StoreType, Assortment, CompetitionDistance, Promo2, WeekOfYear, Sales)
+str(sales_prediction_data)
 
 sales_prediction_data$StoreType <- dplyr::recode(sales_prediction_data$StoreType, "a" = 1, "b" = 2, "c" = 3, "d" = 4)
+str(sales_prediction_data)
 
 sales_prediction_data$Assortment <- dplyr::recode(sales_prediction_data$Assortment, "a" = 1, "b" = 2, "c" = 3)
+str(sales_prediction_data)
 
+# Get the model matrix data
 model_matrix <- xgb.DMatrix(data = as.matrix(mdata |> select(-Sales)), label = mdata$Sales)
+str(model_matrix)
 
 sales_prediction_data$Sales[is.na(sales_prediction_data$Sales)] <- 0
 str(sales_prediction_data)
@@ -447,97 +457,80 @@ str(sales_prediction_data)
 sales_prediction_matrix <- xgb.DMatrix(data = as.matrix(sales_prediction_data |> select(-Sales)), label = sales_prediction_data$Sales)
 str(sales_prediction_matrix)
 
-
 sales_prediction_data$Sales <- predict(xgb_model, sales_prediction_matrix)
 str(sales_prediction_data)
 ```
 
-```{r}
-# Convert Date to POSIXct format
-sales_prediction_data$Month <- as.POSIXct(sales_prediction_data$Month)
-
-# Create a time series plot
-ggplot(sales_prediction_data, aes(x = Month, y = Sales)) +
-  geom_line(color = "blue") +
-  labs(title = "Predicted Sales Over Time",
-       y = "Sales",
-       x = "Date") +
-  theme_minimal()
-```
 # START HERE
+
 ```{r}
-# Assuming your sales_prediction_data contains Month, Sales, and Store columns
-# and df contains Month, Sales, and Store columns
+# Get the average sales per week of year
+hist_avg_sales_per_week <- df |> group_by(Year, WeekOfYear) |> summarise(Avg_Sales = mean(Sales, na.rm = TRUE))
+str(hist_avg_sales_per_week)
 
-# Find the common stores
-common_stores <- intersect(sales_prediction_data$Store, df$Store)
+# Get the predicted average sales per week
+pred_avg_sales_per_week <- sales_prediction_data |> group_by(Year, WeekOfYear) |> summarise(Avg_Sales = mean(Sales, na.rm = TRUE))
+str(sales_prediction_data)
 
-# Filter the data to include only common stores
-sales_prediction_data_filtered <- sales_prediction_data %>%
-  filter(Store %in% common_stores)
+# Plot them both on the y axis and the week of year on the x axis using ggplot2
+ggplot(hist_avg_sales_per_week, aes(x = WeekOfYear, y = Avg_Sales)) +
+  geom_line(aes(y = Avg_Sales, color = "Actual Sales")) +
+  geom_line(data = pred_avg_sales_per_week, aes(y = Avg_Sales, color = "Predicted Sales")) +
+  labs(title = "Average Actual vs Predicted Sales per Week of Year",
+       y = "Average Sales",
+       color = "Sales Type") +
+  scale_color_manual(values = c("Actual Sales" = "blue", "Predicted Sales" = "red")) +
+  theme_minimal()
 
-df_filtered <- df %>%
-  filter(Store %in% common_stores)
-
-# Aggregate predicted sales by Month and Store
-agg_sales_prediction <- sales_prediction_data_filtered %>%
-  group_by(Month, Store) %>%
-  summarise(Predicted_Sales = mean(Sales, na.rm = TRUE))
-
-# Merge with actual sales data
-merged_data <- merge(agg_sales_prediction, df_filtered, by = c("Month", "Store"), all = TRUE)
-
-# Create a time series plot
-ggplot(merged_data, aes(x = Month)) +
-  geom_line(aes(y = Predicted_Sales), color = "blue", linetype = "dashed") +
-  geom_line(aes(y = Sales), color = "red") +
-  labs(title = "Predicted vs Actual Sales (Common Stores Only)",
-       y = "Sales",
-       x = "Month") +
+# and plot using ggplot2 this in the y axs against the week of year on the x axis
+ggplot(hist_avg_sales_per_week, aes(x = WeekOfYear, y = Avg_Sales)) +
+  geom_line() +
+  labs(title = "Average Sales per Week of Year",
+       x = "Week of Year",
+       y = "Average Sales") +
   theme_minimal()
 ```
 
+
+```{r}
+# Plot the historic sales data for the stores that appear in both the actual and predicted sales data
+# Get the stores that appear in both the actual sales data and predicted sales data
+hist_sales <- df |> filter(df$Store %in% sales_prediction_data$Store)
+hist_sales <- hist_sales |> filter(hist_sales$Month %in% sales_prediction_data$Month)
+hist_sales <- hist_sales |> filter(hist_sales$WeekOfYear %in% sales_prediction_data$WeekOfYear)
+# Get the predicted average sales per week
+# hist_sales <- hist_sales |> group_by(Year, WeekOfYear) |> summarise(Avg_Sales = mean(Sales, na.rm = TRUE))
+hist_sales <- hist_sales |> group_by(Store, Year, Month, WeekOfYear, Date) |> summarise(avg_hist_sales = mean(Sales, na.rm = TRUE))
+str(hist_sales)
+
+hist_sales$WeekOfYear <- as.numeric(hist_sales$WeekOfYear)
+str(hist_sales)
+```
+
+
+```{r}
+# plot the hist_sales on the y axis and predicted sales on the y axis and the relevant months on the x axis
+# Ensure WeekOfYear is treated as a numeric variable
+hist_sales$WeekOfYear <- as.numeric(hist_sales$WeekOfYear)
+
+# Order the data by WeekOfYear
+hist_sales <- hist_sales[order(hist_sales$WeekOfYear), ]
+
+# Plot the data with geom_smooth
+ggplot(hist_sales, aes(x = WeekOfYear, y = avg_hist_sales)) +
+  geom_smooth(aes(color = "Predicted Sales"), method = "loess", se = FALSE) +
+  labs(title = "Actual vs Predicted Sales per Week of Year",
+       x = "Week of Year",
+       y = "Sales",
+       color = "Sales Type") +
+  scale_color_manual(values = c("Predicted Sales" = "red")) +
+  theme_minimal()
+```
 
 
 
 ```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
-# Plot a yearly timeseries of sales for the muppets in Rossmann, and use both datasets (sales_prediction and mdata)
-plot_data <- mdata |> 
-  mutate(Month_Year = format(as.Date(paste0(Year, "-", Month, "-01")), "%b %Y"))  |> 
-  group_by(Month_Year)  |> 
-  summarise(Total_Sales_Month = sum(Sales),
-            Year = first(Year),
-            Month = first(Month)) |> 
-  arrange(Year, Month)
 
-plot_data <- plot_data |> 
-  mutate(Month_Year = as.Date(paste0(Year, "-", Month, "-01"), "%Y-%m-%d"))
-
-pred_plot_data <- sales_prediction_data |> 
-  mutate(Month_Year = format(as.Date(paste0(Year, "-", Month, "-01")), "%b %Y"))  |> 
-  group_by(Month_Year)  |> 
-  summarise(Total_Sales_Month = sum(Sales),
-            Year = first(Year),
-            Month = first(Month)) |> 
-  arrange(Year, Month)
-
-pred_plot_data <- pred_plot_data |> 
-  mutate(Month_Year = as.Date(paste0(Year, "-", Month, "-01"), "%Y-%m-%d"))
-
-
-ggplot(plot_data, aes(x = Month_Year, y = Total_Sales_Month)) +
-  geom_line(data = pred_plot_data, aes(x = Month_Year, y = Total_Sales_Month, color = "Predicted Sales")) +
-  geom_point() +
-  geom_line() +
-  geom_point() +
-  labs(title = "Total Sales by Month and Year",
-       x = "Month-Year",
-       y = "Total Sales") +
-  scale_x_date(date_breaks = "6 months",
-               date_labels = "%b %Y",
-               minor_breaks = "month",
-               labels = NULL) +
-  scale_y_continuous(labels = scales::comma)
 ```
 
 Review the available data and describe it in terms of its variables, quality, and relevance to the sales forecasting
