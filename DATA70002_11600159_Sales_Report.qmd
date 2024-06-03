@@ -1,5 +1,10 @@
 ---
 title: "Sales forecasting for the European drug store Rossman"
+execute: 
+  echo: false
+  include: false
+  eval: false
+  warning: false
 # Set the formatting options
 format:
   pdf:
@@ -49,9 +54,7 @@ figcaption {
 }
 </style>
 ```
-
-
-```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+```{r}
 # Load the required libraries
 library(tidyverse)
 library(ggplot2)
@@ -67,7 +70,7 @@ library(xgboost)
 library(kableExtra)
 ```
 
-```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+```{r}
 # Load the data
 df <- read.csv("Data/updated_training_data_with_store.csv")
 str(df)
@@ -77,7 +80,7 @@ str(df)
 
 # Introduction
 
-Predicting sales is a vital part for any business across all sectors, from manufacturing, retail, logistics, to wholesale. However, this is one of the most difficult tasks a business can undertake due to the complexities involved. Sales are driven by a great deal of different factors such as the store location, macro scale of yearly seasonality, to the micro scales of the time of day and the day of the week, whether there is a promotion or what the weather is doing [@hasanAddressingSeasonalityTrend2024]. All of these things influence sales in different ways, so as you can see, this makes forecasting sales the ultimate challenge for a business.
+Predicting sales is a vital part for any business across all sectors, from manufacturing, retail, logistics, to wholesale. However, this is one of the most difficult tasks a business can undertake due to the complexities involved. Sales are driven by a great deal of different factors such as the store location, proximity to competition, macro scales of yearly seasonality, to the micro scales of the time of day and the day of the week, whether there is a promotion or what the weather is doing [@hasanAddressingSeasonalityTrend2024]. All of these things influence sales in different ways, so as you can see, this makes forecasting sales the ultimate challenge for a business.
 
 ## Historic trend in sales
 
@@ -91,7 +94,7 @@ Have a look at the structures of the stores data
 
 Describe the steps used to
 
-```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+```{r}
 # Recode the storetype and assortment columns
 table(df$StoreType)
 df$StoreType <- dplyr::recode(df$StoreType, "a" = 1, "b" = 2, "c" = 3, "d" = 4)
@@ -102,10 +105,12 @@ df$Assortment <- dplyr::recode(df$Assortment, "a" = 1, "b" = 2, "c" = 3)
 table(df$Assortment)
 ```
 
-```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+```{r}
 # correlation plot to find multicollinearity
 numeric_df <- df[, sapply(df, is.numeric)]
 cor_matrix <- cor(numeric_df)
+
+
 corrplot(cor_matrix,
          type = "lower",
          method = "square",
@@ -119,67 +124,107 @@ corrplot(cor_matrix,
          cl.pos = "b",
          cl.length = 11,
          cl.ratio = 0.1)
-
 ```
+
+![Correlation plot show collinearity](images/corplot.png)
 
 ```{r}
 remove(numeric_df, cor_matrix)
 ```
 
-
-```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+```{r}
 names(df)
 ```
 
-```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+```{r}
 # create a new dataframe from df that does not include customers
 mdata <- df  |> select(Store, Sales, DayOfWeek, Open, Promo, StateHoliday_Bool, Year, Month, StoreType, Assortment, CompetitionDistance, Promo2, WeekOfYear) |> 
-  arrange(Year, Month)
+  dplyr::arrange(Year, Month)
 ```
 
-```{r}
+```{r fig-sales_distributions, fig.cap="Distribution of sales"}
+library(ggplot2)
+# hist(m$residuals)
+# Create a histogram of the residuals using ggplot2
+ggplot(mdata, aes(x = Sales)) +
+  geom_histogram(binwidth = 750, fill = "slateblue", color = "goldenrod", alpha = 1) +
+  labs(x = "Sales value (€)",
+       y = "Count") +
+  theme_minimal()
+```
+
+```{r, eval=TRUE}
 # create a linear model
 formula <- Sales ~ DayOfWeek + Open + Promo + StateHoliday_Bool + Year + Month + StoreType + Assortment + CompetitionDistance + Promo2 + WeekOfYear + Store
-
+mdata <- readRDS("Data/mdata.RDS")
 # Run the model and show the summary
 m <- lm(formula, data = mdata)
 summary(m)
 ```
-```{r}
-# tells me about multicollinearity - values less than 5 are OK
-vif(m)
+
+```{r tbl-vif_m, include=TRUE, eval=TRUE}
+library(car)
+library(knitr)
+# Create a kable table of the vif values
+vif_m <- vif(m)
+# values less than 5 are OK
+# Create a kable table of the vif values with a caption
+kable(vif_m, caption = "Variance Inflation Factors for the linear model")
 ```
+
 ```{r}
 # rerun the model without the variables that have a high VIF
 # create a linear model
 formula <- Sales ~ DayOfWeek + Open + Promo + StateHoliday_Bool + Year + Month + StoreType + Assortment + CompetitionDistance + Promo2 + Store
-
-# Run the model and show the summary
 m <- lm(formula, data = mdata)
 summary(m)
 ```
 
 ```{r}
-# tells me about multicollinearity - values less than 5 are OK
-vif(m)
+# Create a kable table of the vif values
+# tells me about multicollinearity - 
+# vif(m)
 ```
 
-```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
-hist(m$residuals)
+```{r}
+library(ggplot2)
+# hist(m$residuals)
+# Create a histogram of the residuals using ggplot2
+ggplot(data.frame(m$residuals), aes(x = m$residuals)) +
+  geom_histogram(binwidth = 750, fill = "slateblue", color = "goldenrod", alpha = 1) +
+  labs(x = "Residuals",
+       y = "Frequency") +
+  theme_minimal()
 ```
 
-```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
-x=m$fitted.values
-y=m$residuals
-plot(lm(y~x), which = 2)
+![Plot of residuals for the linear model](images/m_resids.png){#fig-resids_m}
+
+```{r}
+library(ggplot2)
+
+# Assuming `m` is your linear model
+x <- m$fitted.values
+y <- m$residuals
+
+# Create a data frame with the residuals and fitted values
+data <- data.frame(fitted = x, residuals = y)
+
+# Create a QQ plot using ggplot2
+ggplot(data, aes(sample = residuals)) +
+  stat_qq() +
+  stat_qq_line() +
+  labs(x = "Theoretical Quantiles",
+       y = "Sample Quantiles") +
+  theme_minimal()
 ```
+
+![QQ Plot of Residuals](images/qqplot_m.png){#fig-qq_m fig-align="center"}
 
 ```{r}
 remove(x, y)
 ```
 
-
-```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+```{r}
 # Split the data into training and test sets using test = up to and including 2014, and validate = /015 - This works out to about 70/30
 # Sort the data by year and month
 mdata <- mdata |> arrange(Year, Month)
@@ -188,11 +233,13 @@ train_set <- subset(mdata, Year <= 2014)
 str(train_set)
 validation_set <- subset(mdata, Year >= 2015)
 str(validation_set)
+saveRDS(train_set, file = "Data/train_set.rds")
+saveRDS(validation_set, file = "Data/validation_set.rds")
 ```
 
 ### Decision Tree
 
-```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+```{r}
 # Decision Tree
 #library(rpart)
 #library(caret)
@@ -208,21 +255,27 @@ dt_model <- train(formula,
                   tuneGrid = tune_grid)
 ```
 
-
 ```{r}
+library(caret)
 # Plot the variable importances
-varImp(dt_model) |>  plot()
+caret::varImp(dt_model) |>
+  plot()
 ```
 
+![Importance of each variable to the model](images/var_importance.png)
 
 ```{r}
 tree_predictions <- predict(dt_model, newdata = validation_set)
-
+saveRDS(tree_predictions, "Data/tree_predictions.rds")
 # evaluate the perf
 postResample(tree_predictions, validation_set$Sales)
 ```
 
-```{r}
+```{r, include=TRUE, eval=TRUE}
+library(caret)
+library(MLmetrics)
+validation_set <- readRDS("Data/validation_set.rds")
+tree_predictions <- readRDS("Data/tree_predictions.rds")
 # Do RMSPE
 # Remove missing values from actual and predicted values
 dt_actual_values <- validation_set$Sales[!is.na(validation_set$Sales)]
@@ -233,10 +286,13 @@ dt_predicted_values[dt_predicted_values == 0] <- 1e-10
 
 # Calculate RMSPE using MLmetrics package
 dt_RMSPE_value <- RMSPE(dt_actual_values, dt_predicted_values)
-
 # Print RMSPE
 cat("RMSPE:", round(dt_RMSPE_value*100, 2),"%", "\n")
 ```
+
+This is not such a good RMSPE as it is greater than 0.5, or 50%. General rule-of-thumb is that a good RMSPE is between 0.2-0.4.
+
+# START HERE
 
 ```{r}
 # Assuming your validation_set contains the Month column along with Sales
@@ -251,6 +307,7 @@ avg_sales <- dt_plot_data  |>
   summarise(Avg_Actual_Sales = mean(Actual_Sales, na.rm = TRUE),
             Avg_Predicted_Sales = mean(Predicted_Sales, na.rm = TRUE))
 
+library(ggplot2)
 # Plot using ggplot2
 ggplot(avg_sales, aes(x = Month)) +
   geom_line(aes(y = Avg_Actual_Sales, color = "Actual Sales")) +
@@ -258,13 +315,15 @@ ggplot(avg_sales, aes(x = Month)) +
   labs(title = "Average Actual vs Predicted Sales per Month",
        y = "Average Sales",
        color = "Sales Type") +
-  scale_color_manual(values = c("Actual Sales" = "blue", "Predicted Sales" = "red")) +
+  scale_color_manual(values = c("Actual Sales" = "dodgerblue4", "Predicted Sales" = "firebrick")) +
   theme_minimal()
 ```
 
+![Average Actual vs Predicted Sales per Month](images/act_pred_sales_month.png){fig-align="center"}
+
 ### Random Forest
 
-```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+```{r}
 # Random Forest model
 # library(randomForest)
 rf_model <- randomForest(formula,
@@ -311,6 +370,7 @@ avg_sales_rf <- plot_data_rf %>%
   summarise(Avg_Actual_Sales = mean(Actual_Sales, na.rm = TRUE),
             Avg_Predicted_Sales = mean(Predicted_Sales, na.rm = TRUE))
 
+library(ggplot2)
 # Plot using ggplot2
 ggplot(avg_sales_rf, aes(x = Month)) +
   geom_line(aes(y = Avg_Actual_Sales, color = "Actual Sales")) +
@@ -318,13 +378,14 @@ ggplot(avg_sales_rf, aes(x = Month)) +
   labs(title = "Average Actual vs Predicted Sales per Month (Random Forest)",
        y = "Average Sales",
        color = "Sales Type") +
-  scale_color_manual(values = c("Actual Sales" = "blue", "Predicted Sales" = "red")) +
+  scale_color_manual(values = c("Actual Sales" = "dodgerblue4", "Predicted Sales" = "firebrick")) +
   theme_minimal()
+
 ```
 
 ### XGBoost
 
-```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+```{r}
 # XGBoost
 # library(xgboost)
 
@@ -384,12 +445,12 @@ xg_predicted_values <- xgb_predictions[!is.na(xgb_predictions)]
 xg_predicted_values[xg_predicted_values == 0] <- 1e-10
 
 # Calculate RMSPE using MLmetrics package
+
 xg_RMSPE_value <- RMSPE(xg_actual_values, xg_predicted_values)
 
 # Print RMSPE
 cat("RMSPE:", round(xg_RMSPE_value*100, 2),"%", "\n")
 ```
-
 
 ```{r}
 # Assuming your validation_set contains the Month column along with Sales
@@ -404,6 +465,7 @@ avg_sales_xgb <- plot_data_xgb %>%
   summarise(Avg_Actual_Sales = mean(Actual_Sales, na.rm = TRUE),
             Avg_Predicted_Sales = mean(Predicted_Sales, na.rm = TRUE))
 
+library(ggplot2)
 # Plot using ggplot2
 ggplot(avg_sales_xgb, aes(x = Month)) +
   geom_line(aes(y = Avg_Actual_Sales, color = "Actual Sales")) +
@@ -411,21 +473,20 @@ ggplot(avg_sales_xgb, aes(x = Month)) +
   labs(title = "Average Actual vs Predicted Sales per Month (XGBoost)",
        y = "Average Sales",
        color = "Sales Type") +
-  scale_color_manual(values = c("Actual Sales" = "blue", "Predicted Sales" = "red")) +
+  scale_color_manual(values = c("Actual Sales" = "dodgerblue4", "Predicted Sales" = "firebrick")) +
   theme_minimal()
 ```
 
-
 ### USE XGBOOST MODEL TO PREDICT SALES
 
-```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+```{r}
 # Final Predictions using XGB_Model
 # Join the store and tesdata
 test_data <- read.csv("Data/clean_test_data.csv")
 store_data <- read.csv("Data/clean_store_data.csv")
 ```
 
-```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+```{r}
 # Merge the data
 str(test_data) #41088
 str(store_data) #1115
@@ -436,7 +497,7 @@ sales_prediction_data <- merge(test_data, store_data, by = "Store") |>
 str(sales_prediction_data) #41088
 ```
 
-```{r , echo=FALSE, include=FALSE, eval=FALSE, message=FALSE}
+```{r}
 # Use XGBoost model to predict the sales_prediction_data from the mdata
 sales_prediction_data <- sales_prediction_data  |> select(Store, DayOfWeek, Open, Promo, StateHoliday_Bool, Year, Month, StoreType, Assortment, CompetitionDistance, Promo2, WeekOfYear, Sales)
 str(sales_prediction_data)
@@ -468,30 +529,34 @@ str(sales_prediction_data)
 # Get the stores that appear in both the actual sales data and predicted sales data
 hist_sales <- df |>
   filter(df$Store %in% sales_prediction_data$Store)
-hist_sales <- hist_sales |> filter(hist_sales$Month %in% sales_prediction_data$Month)
-hist_sales <- hist_sales |> filter(hist_sales$WeekOfYear %in% sales_prediction_data$WeekOfYear)
+
+hist_sales <- hist_sales |>
+  filter(hist_sales$Month %in% sales_prediction_data$Month)
+
+hist_sales <- hist_sales |>
+  filter(hist_sales$WeekOfYear %in% sales_prediction_data$WeekOfYear)
+
 # Get the predicted average sales per week
-hist_sales <- hist_sales |> group_by(DayOfWeek) |> summarise(avg_hist_sales = mean(Sales, na.rm = TRUE))
+hist_sales <- hist_sales |>
+  group_by(DayOfWeek) |>
+  summarise(avg_hist_sales = mean(Sales, na.rm = TRUE))
 
 # do the same for the sales_prediction_data
-pred_avg_sales_per_week <- sales_prediction_data |> group_by(DayOfWeek) |> summarise(avg_pred_sales = mean(Sales, na.rm = TRUE))
+pred_avg_sales_per_week <- sales_prediction_data |>
+  group_by(DayOfWeek) |>
+  summarise(avg_pred_sales = mean(Sales, na.rm = TRUE))
 
-```
-
-```{r}
-str(hist_sales)
+library(ggplot2)
 ggplot(hist_sales, aes(x = DayOfWeek, y = avg_hist_sales)) +
   geom_line(aes(y = avg_hist_sales,
                 colour = "Actual Daily Sales")) +
   geom_line(data = pred_avg_sales_per_week,
             aes(y = avg_pred_sales, colour = "Predicted Daily Sales")) +
-  scale_color_manual(values = c("Actual Daily Sales" = "royalblue4", "Predicted Daily Sales" = "orangered3")) +
+  scale_color_manual(values = c("Actual Daily Sales" = "dodgerblue4", "Predicted Daily Sales" = "firebrick")) +
   labs(title = "Average Actual vs Predicted Sales per Week of Year",
        y = "Average Sales",
        color = "Sales Type")
 ```
-
-
 
 Review the available data and describe it in terms of its variables, quality, and relevance to the sales forecasting
 
