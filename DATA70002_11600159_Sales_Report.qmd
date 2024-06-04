@@ -5,6 +5,7 @@ execute:
   include: false
   eval: false
   warning: false
+  message: false
 # Set the formatting options
 format:
   pdf:
@@ -70,12 +71,6 @@ library(xgboost)
 library(kableExtra)
 ```
 
-```{r}
-# Load the data
-df <- read.csv("Data/updated_training_data_with_store.csv")
-str(df)
-```
-
 \newpage
 
 # Introduction
@@ -88,11 +83,33 @@ As a company Rossmann, a part of the A S Watson group, is the market leader for 
 
 # Methodology
 
-### Store data cleaning
+## Data cleaning
 
-Have a look at the structures of the stores data
+The following will describe the processes involved in the preparation required to enable the data to be used in the various modelling techniques. There were three datasets provided: -
 
-Describe the steps used to
+1.  Store data
+2.  Train data
+3.  Test data
+
+Each required various and different cleaning and preparation steps and each will be set out below.
+
+### Store data
+
+It was decided that the changes to be made to the 'store type' and 'assortment' (category of the range of products held by a store) would be converted to numeric categories from alpha-characters (a, b, c, etc). This was so that the predictive power of the model(s) were as good as possible and the data was easier to manipulate. Missing values for the 'competition distance' variable were imputed using the mean of all other distances. The 'competition open since month' and 'competition open since year' variables contained too many missing values (30%), and there was no corresponding variable in the other data, so was removed entirely. It was considered that another option would have been to impute the missing data with an estimation calculated from the other data, however, this was in the end discarded due to the inevitable inaccuracy that would have been introduced considering the number of missing values. The 'promo2sinceweek', 'promo2sinceyear' and 'PromoInterval' variables were amended so that the binary was updated in accordance with whether there was a promotion running at the date of the observation.
+
+### Train data
+
+The train dataset would be used to train the chosen models that would predict sales required cleaning as follows. The 'dayofweek' variable was missing a relatively small number of observations which were also randomly distributed throughout the entire dataset. This meant that the decision was made not to impute the missing values. The 'date' variable was split into 3 new variables (keeping the original) that consisted of one each for day, month and year. This was done because we envisaged that each would have a separate and differing level of impact on the sales. Within the 'open' variable, there were a number of stores that were stated as 'open == 0'. The rows for these observations were dropped from the data as the store remained closed throughout and sales would therefore skew towards 0. The 'stateholiday' variable required the creation of two new variables derived from it. The first was changing 'none' to d so that it could be treated as a categorical variable, and the second was to create one that contained a boolean for either holiday or not holiday. It was considered that the Christmas and Easter holidays could skew sales, but not sufficiently to force them to be treated differently from other state holidays.
+
+### Test data
+
+Once the best sales prediction model was chosen, it would have to be tested on data that we 'did not know' the sales for. This required cleaning so that it was as useful as possible. The 'date' variable was split into the three components (day, month, year). again, because we believed that each would have a different impact on sales. he 'open' variable in this data contained some missing data (4). It was decided to infer 'open == True' for these, due to the related 'promo == T' variable.
+
+```{r}
+# Load the data
+df <- read.csv("Data/updated_training_data_with_store.csv")
+str(df)
+```
 
 ```{r}
 # Recode the storetype and assortment columns
@@ -105,28 +122,103 @@ df$Assortment <- dplyr::recode(df$Assortment, "a" = 1, "b" = 2, "c" = 3)
 table(df$Assortment)
 ```
 
+After each dataset had been cleaned, and all data types had been converted etc., the 'store' and 'train' datasets needed to be joined. This was done using a simple join on the 'store_id' field.
+
+## Exploratory data anaysis
+
+Once the data had been cleaned, various simple plots were produced so that distributions and outliers could be considered if observed.
+
+Firstly, a distribution of the sales figures was plotted and can be seen in @fig-sales_distributions. It shows that there are a large number of €0 sales values. These were often on a Sunday when a store was closed, so were not removed as they were related to the dayofweek variable and were not going to skew results, in fact were vital for a more accurate prediction. All other sales results were relatively normally distributed.
+
+```{r}
+# Create a histogram of the sales figures
+library(ggplot2)
+ggplot(df, aes(x = Sales)) +
+  geom_histogram(binwidth = 750, fill = "slateblue", color = "goldenrod", alpha = 1) +
+  labs(x = "Sales value (€)",
+       y = "Count") +
+  theme_minimal()
+```
+
+![Distribution of historic sales](images/sales_distributions.png){#fig-sales_distributions width="300"}
+
+\FloatBarrier
+
+@fig-cust_dist shows the distribution of customer counts. Again, there were a large number of 0 values, however these are due to a store not being open on a Sunday, and the number of stores that did not open on a Sunday were large. Most stores observed between 0 and around 2500 customers in total.
+
+```{r}
+# Create a histogram of the residuals using ggplot2
+library(ggplot2)
+ggplot(df,
+       aes(x = Customers)) +
+  geom_histogram(binwidth = 100,
+                 fill = "slateblue",
+                 color = "goldenrod",
+                 alpha = 1) +
+  labs(x = "Customer numbers",
+       y = "Observed count") +
+  theme_minimal()
+```
+
+![Distribution of historic customer counts](images/customer_distributions.png){#fig-cust_dist width="300"}
+
+\FloatBarrier
+
+@fig-com_dists shows that the majority of stores were located relatively close to competition. Considering the nature of the business this shows both that the stores are located in areas with a large number of shops around them, so for example, high streets etc., but also that very few are in isolated locations by comparison to competitors.
+
+```{r}
+# Create a histogram of the residuals using ggplot2
+library(ggplot2)
+ggplot(df,
+       aes(x = CompetitionDistance/1000)) +
+  geom_histogram(binwidth = 1,
+                 fill = "slateblue",
+                 color = "goldenrod",
+                 alpha = 1) +
+  labs(x = "Competition distance (km)",
+       y = "Observed count") +
+  theme_minimal()
+```
+
+![Competition distances counts](images/comp_dist.png){#fig-com_dists width="300"}
+
+\FloatBarrier
+
+Once these initial observations had been carried out, and we were happy that the data looked reasonable, so that we could visualise the correlation between the variables, a correlation plot was produced. This can be seen in @fig-corplot_m.
+
 ```{r}
 # correlation plot to find multicollinearity
 numeric_df <- df[, sapply(df, is.numeric)]
 cor_matrix <- cor(numeric_df)
 
-
+# Save the plot as a high-resolution PNG
+png("images/corplot.png",
+    units = "px",
+    width = 1000,
+    height = 1000
+    # res = 900
+    )
 corrplot(cor_matrix,
          type = "lower",
          method = "square",
          tl.srt = 45,
          order = "hclust",
-         tl.cex = .5,
+         tl.cex = 1.5,
          tl.col = "midnightblue",
          col = COL2('BrBG', 10),
          addCoef.col = "grey50",
-         number.cex = .45,
+         number.cex = 1.45,
          cl.pos = "b",
          cl.length = 11,
          cl.ratio = 0.1)
+dev.off()
 ```
 
-![Correlation plot show collinearity](images/corplot.png)
+![Correlation plot show collinearity](images/corplot.png){#fig-corplot_m width="244"}
+
+Here we can see that there is a relatively high correlation between the Customers/Sales variables, and the Promo2/Promo2SinceYear/ YearPromo/Promo2SinceWeek variables. Variables to be removed would be decided upon whether the correlation was above 0.75. This allowed us to remove some of these variables that displayed collinearity from the model. For example, Sales could easily be predicted by Customers, however, there are many factors at play in addition to this. In order to draw meaningful conclusions from our models, the 'Customers' and other variables displaying collinearity were removed (we couldn't remove 'Sales' as this was required to be the dependent variable in our model(s)). However, the one exception to this was to leave the WeekOfYear/Month relationship in the model, as these would be important. For example they would naturally be correlated due to the 1^st^ week of the year always appearing in January, and this would affect sales as well.
+
+\FloatBarrier
 
 ```{r}
 remove(numeric_df, cor_matrix)
@@ -142,16 +234,43 @@ mdata <- df  |> select(Store, Sales, DayOfWeek, Open, Promo, StateHoliday_Bool, 
   dplyr::arrange(Year, Month)
 ```
 
-```{r fig-sales_distributions, fig.cap="Distribution of sales"}
-library(ggplot2)
-# hist(m$residuals)
-# Create a histogram of the residuals using ggplot2
-ggplot(mdata, aes(x = Sales)) +
-  geom_histogram(binwidth = 750, fill = "slateblue", color = "goldenrod", alpha = 1) +
-  labs(x = "Sales value (€)",
-       y = "Count") +
-  theme_minimal()
+\FloatBarrier
+
+Once all of the variables had been removed, another correlation plot was produced just to check the validity of our decisions. This can be seen in @fig-mdata_corrplot. This shows that all (except WeekOfYear/Month) correlations are now under 0.75 and do not have near perfect linear relationships.
+
+```{r}
+# correlation plot to find multicollinearity
+numeric_mdata <- mdata[, sapply(mdata, is.numeric)]
+mdata_cor_matrix <- cor(numeric_mdata)
+
+# Save the plot as a high-resolution PNG
+png("images/mdata_corplot.png",
+    units = "px",
+    width = 1000,
+    height = 1000
+    # res = 900
+    )
+corrplot(mdata_cor_matrix,
+         type = "lower",
+         method = "square",
+         tl.srt = 45,
+         order = "hclust",
+         tl.cex = 1.5,
+         tl.col = "midnightblue",
+         col = COL2('BrBG', 10),
+         addCoef.col = "grey50",
+         number.cex = 1.45,
+         cl.pos = "b",
+         cl.length = 11,
+         cl.ratio = 0.1)
+dev.off()
 ```
+
+![Correlation plot after multicollinearity was addressed](images/mdata_corplot.png){#fig-mdata_corrplot width="245"}
+
+\FloatBarrier
+
+@tbl-vif_m shows the remaining variables and their degree of Variance Inflation Factor (VIF). This is showing that all the remaining variables GVIF values are under 5, and points to the measure of the relationship of each variable and the others [@akinwandeVarianceInflationFactor2015]. Once this table was analysed and we were happy that the remaining variables would not skew the results of any regression or other predictive models, we could then attempt to investigate the best model to predict sales.
 
 ```{r, eval=TRUE}
 # create a linear model
@@ -162,17 +281,42 @@ m <- lm(formula, data = mdata)
 summary(m)
 ```
 
-```{r tbl-vif_m, include=TRUE, eval=TRUE}
+```{r}
 library(car)
 library(knitr)
+library(webshot2)
 # Create a kable table of the vif values
 vif_m <- vif(m)
 # values less than 5 are OK
 # Create a kable table of the vif values with a caption
-kable(vif_m, caption = "Variance Inflation Factors for the linear model")
+# Create kable table and save it as an HTML string
+# kable_table <- kable(vif_m, caption = "Variance Inflation Factors for the linear model")
+
+# Create kable table
+kable_table <- kable(vif_m, caption = "Variance Inflation Factors for the linear model")
+
+# Save the kable table as an HTML file
+html_file <- tempfile(fileext = ".html")
+save_kable(kable_table, file = html_file)
+
+# Convert the HTML file to PNG image
+image_file <- "vif_table.png"
+# webshot(html_file, file = image_file)
+
+# Optionally, remove the temporary HTML file
+unlink(html_file)
 ```
 
+![Variance Inflation Factors for the linear model](images/vif_table.png){#tbl-vif_m fig-align="center" width="274"}
+
+\FloatBarrier
+
+@fig-lm_summary shows the results of the linear model. As we can see, looking at the p-values, it seems that all variables are significant, or that the probability of obtaining the observed results by chance is very low. The R^2^ value is around 0.56, or that the model can explain around 56% of the variability in the target variable (Sales in this case).
+
 ```{r}
+library(car)
+library(knitr)
+library(webshot2)
 # rerun the model without the variables that have a high VIF
 # create a linear model
 formula <- Sales ~ DayOfWeek + Open + Promo + StateHoliday_Bool + Year + Month + StoreType + Assortment + CompetitionDistance + Promo2 + Store
@@ -180,10 +324,15 @@ m <- lm(formula, data = mdata)
 summary(m)
 ```
 
+![Summary of linear regression model](images/lm_table2.png){#fig-lm_summary width="274"}
+
+\FloatBarrier
+
 ```{r}
 # Create a kable table of the vif values
 # tells me about multicollinearity - 
 # vif(m)
+
 ```
 
 ```{r}
@@ -197,7 +346,15 @@ ggplot(data.frame(m$residuals), aes(x = m$residuals)) +
   theme_minimal()
 ```
 
-![Plot of residuals for the linear model](images/m_resids.png){#fig-resids_m}
+\FloatBarrier
+
+![Plot of residuals for the linear model](images/m_resids.png){#fig-resids_m width="300"}
+
+\FloatBarrier
+
+```{r}
+plot(lm.good, which = 1)
+```
 
 ```{r}
 library(ggplot2)
@@ -213,12 +370,14 @@ data <- data.frame(fitted = x, residuals = y)
 ggplot(data, aes(sample = residuals)) +
   stat_qq() +
   stat_qq_line() +
-  labs(x = "Theoretical Quantiles",
-       y = "Sample Quantiles") +
+  labs(x = "Fitted values",
+       y = "Residuals") +
   theme_minimal()
 ```
 
-![QQ Plot of Residuals](images/qqplot_m.png){#fig-qq_m fig-align="center"}
+![QQ Plot of Residuals](images/qqplot_m.png){#fig-qq_m fig-align="center" width="440"}
+
+\FloatBarrier
 
 ```{r}
 remove(x, y)
@@ -262,7 +421,11 @@ caret::varImp(dt_model) |>
   plot()
 ```
 
-![Importance of each variable to the model](images/var_importance.png)
+\FloatBarrier
+
+![Importance of each variable to the model](images/var_importance.png){width="440"}
+
+\FloatBarrier
 
 ```{r}
 tree_predictions <- predict(dt_model, newdata = validation_set)
@@ -270,6 +433,8 @@ saveRDS(tree_predictions, "Data/tree_predictions.rds")
 # evaluate the perf
 postResample(tree_predictions, validation_set$Sales)
 ```
+
+\FloatBarrier
 
 ```{r, include=TRUE, eval=TRUE}
 library(caret)
@@ -290,9 +455,9 @@ dt_RMSPE_value <- RMSPE(dt_actual_values, dt_predicted_values)
 cat("RMSPE:", round(dt_RMSPE_value*100, 2),"%", "\n")
 ```
 
-This is not such a good RMSPE as it is greater than 0.5, or 50%. General rule-of-thumb is that a good RMSPE is between 0.2-0.4.
+\FloatBarrier
 
-# START HERE
+This is not such a good RMSPE as it is greater than 0.5, or 50%. General rule-of-thumb is that a good RMSPE is between 0.2-0.4.
 
 ```{r}
 # Assuming your validation_set contains the Month column along with Sales
@@ -312,30 +477,37 @@ library(ggplot2)
 ggplot(avg_sales, aes(x = Month)) +
   geom_line(aes(y = Avg_Actual_Sales, color = "Actual Sales")) +
   geom_line(aes(y = Avg_Predicted_Sales, color = "Predicted Sales")) +
-  labs(title = "Average Actual vs Predicted Sales per Month",
-       y = "Average Sales",
+  labs(y = "Average Sales",
        color = "Sales Type") +
   scale_color_manual(values = c("Actual Sales" = "dodgerblue4", "Predicted Sales" = "firebrick")) +
   theme_minimal()
 ```
 
-![Average Actual vs Predicted Sales per Month](images/act_pred_sales_month.png){fig-align="center"}
+\FloatBarrier
+
+![Average actual vs predicted sales per month using a Decision Tree model](images/act_pred_sales_month_dt.png){#fig-dt_sales fig-align="center" width="440"}
+
+\FloatBarrier
 
 ### Random Forest
 
 ```{r}
 # Random Forest model
-# library(randomForest)
+library(randomForest)
 rf_model <- randomForest(formula,
                          data = train_set,
                          ntree = 10,
                          mtry = 3)
-
+saveRDS(rf_model, file = "Data/rf_model.rds")
 print(rf_model)
 # seems to best so far with 76.39%
 ```
 
-```{r}
+\FloatBarrier
+
+```{r, include=TRUE, eval=TRUE}
+library(randomForest)
+rf_model <- readRDS("Data/rf_model.rds")
 # Predictions
 rf_predictions <- predict(rf_model, newdata = validation_set)
 
@@ -357,6 +529,10 @@ rf_RMSPE_value <- RMSPE(rf_actual_values, rf_predicted_values)
 cat("RMSPE:", round(rf_RMSPE_value*100, 2),"%", "\n")
 ```
 
+\FloatBarrier
+
+This is a bit better as it is lower that the previous RMSPE and below 0.5
+
 ```{r}
 # Assuming your validation_set contains the Month column along with Sales
 # Create a data frame with Month, Actual Sales, and Predicted Sales
@@ -375,20 +551,23 @@ library(ggplot2)
 ggplot(avg_sales_rf, aes(x = Month)) +
   geom_line(aes(y = Avg_Actual_Sales, color = "Actual Sales")) +
   geom_line(aes(y = Avg_Predicted_Sales, color = "Predicted Sales")) +
-  labs(title = "Average Actual vs Predicted Sales per Month (Random Forest)",
-       y = "Average Sales",
+  labs(y = "Average Sales",
        color = "Sales Type") +
   scale_color_manual(values = c("Actual Sales" = "dodgerblue4", "Predicted Sales" = "firebrick")) +
   theme_minimal()
-
 ```
+
+\FloatBarrier
+
+![Average actual vs predicted sales per month using a Random Forest model](images/act_pred_sales_month_rf.png){#fig-rf_sales width="440"}
+
+\FloatBarrier
 
 ### XGBoost
 
 ```{r}
 # XGBoost
-# library(xgboost)
-
+library(xgboost)
 str(train_set)
 str(validation_set)
 # -Store, -WeekOfYear
@@ -433,9 +612,14 @@ xgb_predictions <- predict(xgb_model, validation_matrix)
 
 # evaluate the perf
 postResample(xgb_predictions, validation_set$Sales)
+saveRDS(xgb_predictions, file = "Data/xgb_predictions.rds")
 ```
 
-```{r}
+\FloatBarrier
+
+```{r, include=TRUE, eval=TRUE}
+library(xgboost)
+xgb_predictions <- readRDS("Data/xgb_predictions.rds")
 # Do RMSPE
 # Remove missing values from actual and predicted values
 xg_actual_values <- validation_set$Sales[!is.na(validation_set$Sales)]
@@ -451,6 +635,8 @@ xg_RMSPE_value <- RMSPE(xg_actual_values, xg_predicted_values)
 # Print RMSPE
 cat("RMSPE:", round(xg_RMSPE_value*100, 2),"%", "\n")
 ```
+
+\FloatBarrier
 
 ```{r}
 # Assuming your validation_set contains the Month column along with Sales
@@ -470,12 +656,13 @@ library(ggplot2)
 ggplot(avg_sales_xgb, aes(x = Month)) +
   geom_line(aes(y = Avg_Actual_Sales, color = "Actual Sales")) +
   geom_line(aes(y = Avg_Predicted_Sales, color = "Predicted Sales")) +
-  labs(title = "Average Actual vs Predicted Sales per Month (XGBoost)",
-       y = "Average Sales",
+  labs(y = "Average Sales",
        color = "Sales Type") +
   scale_color_manual(values = c("Actual Sales" = "dodgerblue4", "Predicted Sales" = "firebrick")) +
   theme_minimal()
 ```
+
+![Average actual vs predicted sales per month using the XGBoost model](images/act_pred_sales_month_xgb.png){#fig-sales_xgb width="440"}
 
 ### USE XGBOOST MODEL TO PREDICT SALES
 
@@ -553,10 +740,12 @@ ggplot(hist_sales, aes(x = DayOfWeek, y = avg_hist_sales)) +
   geom_line(data = pred_avg_sales_per_week,
             aes(y = avg_pred_sales, colour = "Predicted Daily Sales")) +
   scale_color_manual(values = c("Actual Daily Sales" = "dodgerblue4", "Predicted Daily Sales" = "firebrick")) +
-  labs(title = "Average Actual vs Predicted Sales per Week of Year",
-       y = "Average Sales",
-       color = "Sales Type")
+  labs(y = "Average Sales",
+       color = "Sales Type") +
+  theme_minimal()
 ```
+
+![Average actual vs predicted sales per week of year using the XGBoost model](images/final_act_pred_sales_month_xgb.png){#fig-final_xgb width="440"}
 
 Review the available data and describe it in terms of its variables, quality, and relevance to the sales forecasting
 
@@ -581,5 +770,7 @@ Interpret key results, assumptions and limitations of your analysis.
 ## Implications
 
 ## Recommendations
+
+\newpage
 
 # References
