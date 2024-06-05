@@ -69,13 +69,14 @@ library(MLmetrics)
 library(randomForest)
 library(xgboost)
 library(kableExtra)
+library(GGally)
 ```
 
 \newpage
 
 # Introduction
 
-Predicting sales is a vital part for any business across all sectors, from manufacturing, retail, logistics, to wholesale. However, this is one of the most difficult tasks a business can undertake due to the complexities involved. Sales are driven by a great deal of different factors such as the store location, proximity to competition, macro scales of yearly seasonality, to the micro scales of the time of day and the day of the week, whether there is a promotion or what the weather is doing [@hasanAddressingSeasonalityTrend2024]. All of these things influence sales in different ways, so as you can see, this makes forecasting sales the ultimate challenge for a business.
+Predicting sales is a vital part for any business across all sectors, from manufacturing, retail, logistics, to wholesale. However, this is one of the most difficult tasks a business can undertake due to the complexities involved. Sales are driven by a great deal of different factors such as the store location, proximity to competition, macro scales of yearly seasonality, to the micro scales of the time of day and the day of the week, whether there was a promotion or what the weather is doing [@hasanAddressingSeasonalityTrend2024]. All of these things influence sales in different ways, so as you can see, this makes forecasting sales the ultimate challenge for a business.
 
 ## Historic trend in sales
 
@@ -184,7 +185,7 @@ ggplot(df,
 
 \FloatBarrier
 
-Once these initial observations had been carried out, and we were happy that the data looked reasonable, so that we could visualise the correlation between the variables, a correlation plot was produced. This can be seen in @fig-corplot_m.
+Once these initial observations had been carried out, and we were happy that the data looked reasonable and fit for modelling, so that we could visualise the correlation between the variables, a correlation plot was produced. This can be seen in @fig-corplot_m.
 
 ```{r}
 # correlation plot to find multicollinearity
@@ -216,7 +217,7 @@ dev.off()
 
 ![Correlation plot show collinearity](images/corplot.png){#fig-corplot_m width="244"}
 
-Here we can see that there is a relatively high correlation between the Customers/Sales variables, and the Promo2/Promo2SinceYear/ YearPromo/Promo2SinceWeek variables. Variables to be removed would be decided upon whether the correlation was above 0.75. This allowed us to remove some of these variables that displayed collinearity from the model. For example, Sales could easily be predicted by Customers, however, there are many factors at play in addition to this. In order to draw meaningful conclusions from our models, the 'Customers' and other variables displaying collinearity were removed (we couldn't remove 'Sales' as this was required to be the dependent variable in our model(s)). However, the one exception to this was to leave the WeekOfYear/Month relationship in the model, as these would be important. For example they would naturally be correlated due to the 1^st^ week of the year always appearing in January, and this would affect sales as well.
+Here we can see that there was a relatively high correlation between the Customers/Sales variables, and the Promo2/Promo2SinceYear/ YearPromo/Promo2SinceWeek variables. Variables to be removed would be decided upon whether the correlation was above 0.75. This allowed us to remove some of these variables that displayed collinearity from the model. For example, Sales could easily be predicted by Customers, however, there are many factors at play in addition to this. In order to draw meaningful conclusions from our models, the 'Customers' and other variables displaying collinearity were removed (we couldn't remove 'Sales' as this was required to be the dependent variable in our model(s)). However, the one exception to this was to leave the WeekOfYear/Month relationship in the model, as these would be important. For example they would naturally be correlated due to the 1^st^ week of the year always appearing in January, and this would affect sales as well.
 
 \FloatBarrier
 
@@ -270,7 +271,7 @@ dev.off()
 
 \FloatBarrier
 
-@tbl-vif_m shows the remaining variables and their degree of Variance Inflation Factor (VIF). This is showing that all the remaining variables GVIF values are under 5, and points to the measure of the relationship of each variable and the others [@akinwandeVarianceInflationFactor2015]. Once this table was analysed and we were happy that the remaining variables would not skew the results of any regression or other predictive models, we could then attempt to investigate the best model to predict sales.
+@tbl-vif_m shows the remaining variables and their degree of Variance Inflation Factor (VIF). This was showing that all the remaining variables GVIF values are under 5, and points to the measure of the relationship between each variable [@akinwandeVarianceInflationFactor2015]. Once this table was analysed and we were happy that the remaining variables would not skew the results of any regression or other predictive models, we could then attempt to investigate which of the chosen models was able to best predict sales.
 
 ```{r, eval=TRUE}
 # create a linear model
@@ -311,7 +312,19 @@ unlink(html_file)
 
 \FloatBarrier
 
-@fig-lm_summary shows the results of the linear model. As we can see, looking at the p-values, it seems that all variables are significant, or that the probability of obtaining the observed results by chance is very low. The R^2^ value is around 0.56, or that the model can explain around 56% of the variability in the target variable (Sales in this case).
+### Heatmap of linearity
+
+```{r}
+mdata |> 
+  cor() |> 
+  heatmap()
+```
+
+\FloatBarrier
+
+The first model to be used to predict sales was a simple linear regression model. Each variable was used to predict sales
+
+@fig-lm_summary shows the results of the linear model. As we can see, by looking at the p-values, it was clear that all variables included in the model are significant, or that the probability of obtaining the observed results by chance was very low. The R^2^ value was around 0.56, or that the model can explain around 56% of the variability in the target variable (Sales in this case).
 
 ```{r}
 library(car)
@@ -370,12 +383,12 @@ data <- data.frame(fitted = x, residuals = y)
 ggplot(data, aes(sample = residuals)) +
   stat_qq() +
   stat_qq_line() +
-  labs(x = "Fitted values",
-       y = "Residuals") +
+  labs(x = "Sample quantiles",
+       y = "Theoretical quantiles") +
   theme_minimal()
 ```
 
-![QQ Plot of Residuals](images/qqplot_m.png){#fig-qq_m fig-align="center" width="440"}
+![QQ Plot of Residuals](images/qqplot_m.png){#fig-qq_m fig-align="center" width="300"}
 
 \FloatBarrier
 
@@ -423,7 +436,7 @@ caret::varImp(dt_model) |>
 
 \FloatBarrier
 
-![Importance of each variable to the model](images/var_importance.png){width="440"}
+![Importance of each variable to the model](images/var_importance.png){width="300"}
 
 \FloatBarrier
 
@@ -457,7 +470,7 @@ cat("RMSPE:", round(dt_RMSPE_value*100, 2),"%", "\n")
 
 \FloatBarrier
 
-This is not such a good RMSPE as it is greater than 0.5, or 50%. General rule-of-thumb is that a good RMSPE is between 0.2-0.4.
+This was not such a good RMSPE as it was greater than 0.5, or 50%. General rule-of-thumb is that a good RMSPE is between 0.2-0.4.
 
 ```{r}
 # Assuming your validation_set contains the Month column along with Sales
@@ -485,7 +498,7 @@ ggplot(avg_sales, aes(x = Month)) +
 
 \FloatBarrier
 
-![Average actual vs predicted sales per month using a Decision Tree model](images/act_pred_sales_month_dt.png){#fig-dt_sales fig-align="center" width="440"}
+![Average actual vs predicted sales per month using a Decision Tree model](images/act_pred_sales_month_dt.png){#fig-dt_sales fig-align="center" width="300"}
 
 \FloatBarrier
 
@@ -531,7 +544,7 @@ cat("RMSPE:", round(rf_RMSPE_value*100, 2),"%", "\n")
 
 \FloatBarrier
 
-This is a bit better as it is lower that the previous RMSPE and below 0.5
+This was a bit better as it was lower that the previous RMSPE and below 0.5
 
 ```{r}
 # Assuming your validation_set contains the Month column along with Sales
@@ -541,8 +554,8 @@ plot_data_rf <- data.frame(Month = validation_set$Month,
                            Predicted_Sales = rf_predictions)
 
 # Calculate average sales per month
-avg_sales_rf <- plot_data_rf %>%
-  group_by(Month) %>%
+avg_sales_rf <- plot_data_rf |> 
+  group_by(Month)  |> 
   summarise(Avg_Actual_Sales = mean(Actual_Sales, na.rm = TRUE),
             Avg_Predicted_Sales = mean(Predicted_Sales, na.rm = TRUE))
 
@@ -559,7 +572,7 @@ ggplot(avg_sales_rf, aes(x = Month)) +
 
 \FloatBarrier
 
-![Average actual vs predicted sales per month using a Random Forest model](images/act_pred_sales_month_rf.png){#fig-rf_sales width="440"}
+![Average actual vs predicted sales per month using a Random Forest model](images/act_pred_sales_month_rf.png){#fig-rf_sales width="300"}
 
 \FloatBarrier
 
@@ -585,16 +598,7 @@ params <- list(
   subsample = 0.8,                 # Subsample ratio of the training instance
   colsample_bytree = 0.8           # Subsample ratio of columns when constructing each tree
 )
- 
-# # simple model which somehow lets the below model run
-# set.seed(123)
-# xgb_model <- xgb.train(
-#   params = params,
-#   data = train_matrix,
-#   nrounds = 1000,
-#   verbose = 1
-# )
- 
+
 # Train the model
 set.seed(123)  # For reproducibility
 xgb_model <- xgb.train(
@@ -646,8 +650,8 @@ plot_data_xgb <- data.frame(Month = validation_set$Month,
                             Predicted_Sales = xgb_predictions)
 
 # Calculate average sales per month
-avg_sales_xgb <- plot_data_xgb %>%
-  group_by(Month) %>%
+avg_sales_xgb <- plot_data_xgb |> 
+  group_by(Month) |> 
   summarise(Avg_Actual_Sales = mean(Actual_Sales, na.rm = TRUE),
             Avg_Predicted_Sales = mean(Predicted_Sales, na.rm = TRUE))
 
@@ -662,7 +666,7 @@ ggplot(avg_sales_xgb, aes(x = Month)) +
   theme_minimal()
 ```
 
-![Average actual vs predicted sales per month using the XGBoost model](images/act_pred_sales_month_xgb.png){#fig-sales_xgb width="440"}
+![Average actual vs predicted sales per month using the XGBoost model](images/act_pred_sales_month_xgb.png){#fig-sales_xgb width="300"}
 
 ### USE XGBOOST MODEL TO PREDICT SALES
 
@@ -695,6 +699,14 @@ str(sales_prediction_data)
 sales_prediction_data$Assortment <- dplyr::recode(sales_prediction_data$Assortment, "a" = 1, "b" = 2, "c" = 3)
 str(sales_prediction_data)
 
+
+str(mdata)
+mdata$StoreType <- dplyr::recode(mdata$StoreType, "a" = 1, "b" = 2, "c" = 3, "d" = 4)
+str(mdata)
+
+mdata$Assortment <- dplyr::recode(mdata$Assortment, "a" = 1, "b" = 2, "c" = 3)
+str(mdata)
+
 # Get the model matrix data
 model_matrix <- xgb.DMatrix(data = as.matrix(mdata |> select(-Sales)), label = mdata$Sales)
 str(model_matrix)
@@ -706,6 +718,7 @@ sales_prediction_matrix <- xgb.DMatrix(data = as.matrix(sales_prediction_data |>
 str(sales_prediction_matrix)
 
 sales_prediction_data$Sales <- predict(xgb_model, sales_prediction_matrix)
+
 str(sales_prediction_data)
 ```
 
@@ -745,7 +758,7 @@ ggplot(hist_sales, aes(x = DayOfWeek, y = avg_hist_sales)) +
   theme_minimal()
 ```
 
-![Average actual vs predicted sales per week of year using the XGBoost model](images/final_act_pred_sales_month_xgb.png){#fig-final_xgb width="440"}
+![Average actual vs predicted sales per week of year using the XGBoost model](images/final_act_pred_sales_month_xgb.png){#fig-final_xgb width="300"}
 
 Review the available data and describe it in terms of its variables, quality, and relevance to the sales forecasting
 
