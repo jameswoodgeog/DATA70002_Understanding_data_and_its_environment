@@ -271,7 +271,7 @@ dev.off()
 
 \FloatBarrier
 
-@tbl-vif_m shows the remaining variables and their degree of Variance Inflation Factor (VIF). This was showing that all the remaining variables GVIF values are under 5, and points to the measure of the relationship between each variable [@akinwandeVarianceInflationFactor2015]. Once this table was analysed and we were happy that the remaining variables would not skew the results of any regression or other predictive models, we could then attempt to investigate which of the chosen models was able to best predict sales.
+@tbl-vif_m shows the remaining variables and their degree of Variance Inflation Factor (VIF). This was showing that all the remaining variables GVIF values are under 5, and points to the measure of the relationship between each variable [@akinwandeVarianceInflationFactor2015].
 
 ```{r, eval=TRUE}
 # create a linear model
@@ -312,19 +312,32 @@ unlink(html_file)
 
 \FloatBarrier
 
-### Heatmap of linearity
+The final visualisation to be used in order that the correct modelling method was used, was to produce a heat map that shows the level of linearity in the relationships between the variables. As can be seen in @fig-heatmap map the majority of the relationships have a low linearity.
 
 ```{r}
-mdata |> 
-  cor() |> 
-  heatmap()
+library(pheatmap)
+library(viridisLite)
+
+mdata |>
+  cor() |>
+    pheatmap(
+      color = hcl.colors(100, "BrBG"),
+      border_color = "grey",
+      fontsize_row = 8,
+      fontsize_col = 8,
+      
+      legend_breaks = c(-0.5, 0.25, 1),
+      legend_labels = c("Low", "Medium", "High")
+             )
 ```
+
+![Heat map showing level of linear relationship](images/heatmap.png){#fig-heatmap width="350"}
 
 \FloatBarrier
 
-The first model to be used to predict sales was a simple linear regression model. Each variable was used to predict sales
+Once this table was analysed and we were happy that the remaining variables would not skew the results of any regression or other predictive models, we could then attempt to investigate which of the chosen models was able to best predict sales.
 
-@fig-lm_summary shows the results of the linear model. As we can see, by looking at the p-values, it was clear that all variables included in the model are significant, or that the probability of obtaining the observed results by chance was very low. The R^2^ value was around 0.56, or that the model can explain around 56% of the variability in the target variable (Sales in this case).
+The first model to be used to predict sales was a simple linear regression model. Each variable was used to predict sales and @fig-lm_summary shows the results of the model. As we can see, by looking at the p-values, it was clear that all variables included in the model are significant, or that the probability of obtaining the observed results by chance was very low. The R^2^ value was around 0.56, or that the model can explain around 56% of the variability in the target variable (Sales in this case).
 
 ```{r}
 library(car)
@@ -361,9 +374,13 @@ ggplot(data.frame(m$residuals), aes(x = m$residuals)) +
 
 \FloatBarrier
 
+@fig-resids_m shows the distribution of the residuals from the linear regression model. Residuals represent the difference between the actual values and those predicted by the model. This distribution of the residuals here show that there is a fairly large variation between the actual and predicted values.
+
 ![Plot of residuals for the linear model](images/m_resids.png){#fig-resids_m width="300"}
 
 \FloatBarrier
+
+Another useful way to visualise the effectiveness of the model to predict sales is to produce a QQ-Plot. The plot in @fig-qq_m effectively plots how well the residuals produced by the model match what we would expect from normally distributed data. As we can see it shows that up to a certain point (\~1.25) match what we would expect from a normal distribution, and after that point the quantiles are greater than expected from normally distributed data. This suggests that there is a relatively large amount of data that is non-linear.
 
 ```{r}
 plot(lm.good, which = 1)
@@ -388,13 +405,15 @@ ggplot(data, aes(sample = residuals)) +
   theme_minimal()
 ```
 
-![QQ Plot of Residuals](images/qqplot_m.png){#fig-qq_m fig-align="center" width="300"}
+![Q-Q Plot of Residuals](images/qqplot_m.png){#fig-qq_m fig-align="center" width="300"}
 
 \FloatBarrier
 
 ```{r}
 remove(x, y)
 ```
+
+Before we could attempt to produce results from various non-linear modelling techniques, we had to split the data into separate train and validation sets. The train data consisted of around 70% of the data and the validation data consisted of the remaining 30%.
 
 ```{r}
 # Split the data into training and test sets using test = up to and including 2014, and validate = /015 - This works out to about 70/30
@@ -411,6 +430,10 @@ saveRDS(validation_set, file = "Data/validation_set.rds")
 
 ### Decision Tree
 
+The first non-linear model to be tested is know as a Decision Tree. These are effectively hierarchical models that use a series of decisions to produce various results, culminating in consequences of those decisions based upon likelihood of things like the chance of event outcomes for example.
+
+Firstly a `tune_grid` was created to create a dataframe from all combinations of the variables in the data provided to the model. This is part of the hyperparameter optimisation which attempts to yield the optimal number of branches in the decision tree. The model was then trained using the `rpart` method which is a regression classification method, on the train dataset
+
 ```{r}
 # Decision Tree
 #library(rpart)
@@ -419,6 +442,7 @@ saveRDS(validation_set, file = "Data/validation_set.rds")
 
 # use grid search for hyperparameter optimisation
 tune_grid <- expand.grid(cp = seq(0.01, 0.1, by = 0.01))
+# train the decision tree model
 dt_model <- train(formula,
                   data = train_set,
                   method = "rpart",
@@ -436,20 +460,29 @@ caret::varImp(dt_model) |>
 
 \FloatBarrier
 
-![Importance of each variable to the model](images/var_importance.png){width="300"}
+Using the model, we could observe the most important variables according to the decision tree. As you can see in @fig-dt_var_importance, it is no surprise that the most important variable to predict (any sales at all) was whether a store was open. Following that, the day of the week was the next most important predictor of sales values, followed by 'Month' and 'State Holiday' (or whether there was a state holiday on a particular day.
+
+![Importance of each variable to the model](images/var_importance.png){#fig-dt_var_importance width="300"}
 
 \FloatBarrier
 
+Once the training had been completed, sales were predicted from the model using the validation dataset as previously mentioned, and the performance evaluated. As can be seen in @tbl-dt_perf_values, the R^2^ was 0.56, which is another way of saying that the model can explain 56% of the variability observed in the model of the target variable ('Sales').
+
 ```{r}
+library(kableExtra)
+library(webshot2)
+library(htmlwidgets)
+
 tree_predictions <- predict(dt_model, newdata = validation_set)
 saveRDS(tree_predictions, "Data/tree_predictions.rds")
-# evaluate the perf
 postResample(tree_predictions, validation_set$Sales)
 ```
 
+![Performance statistics from the Decision Tree model](images/dt_perf_tbl.png){#tbl-dt_perf_values}
+
 \FloatBarrier
 
-```{r, include=TRUE, eval=TRUE}
+```{r, eval=TRUE}
 library(caret)
 library(MLmetrics)
 validation_set <- readRDS("Data/validation_set.rds")
@@ -470,7 +503,7 @@ cat("RMSPE:", round(dt_RMSPE_value*100, 2),"%", "\n")
 
 \FloatBarrier
 
-This was not such a good RMSPE as it was greater than 0.5, or 50%. General rule-of-thumb is that a good RMSPE is between 0.2-0.4.
+Once the calculations were done, the final RMSPE value of `r paste0(round(dt_RMSPE_value*100, 2), '%')` was found. This value is higher than the 0.5, or 50% general rule-of-thumb for a good RMSPE which is between 0.2-0.4. The Route Means Square Percentage Error essentially measures the predictive power of a model by measuring the distance between the actual and predicted values in the data. Therefore, the lower the distance, the better the model is at predicting, in this instance; sales. As @fig-dt_sales shows, the model is overall, predicting lower sales values than the actual observed sales.
 
 ```{r}
 # Assuming your validation_set contains the Month column along with Sales
@@ -504,6 +537,10 @@ ggplot(avg_sales, aes(x = Month)) +
 
 ### Random Forest
 
+We then tested the predictive power of another non-linear modelling technique called "Random Forest". This is essentially a model that contains a set of decision trees. One of the main drawbacks over the decision tree model is that it requires considerably more processing power, but as @aliRandomForestsDecision2012 point out, Decision Trees are very handy when using smaller datasets as the difference between the results would not be significant, whereas on larger datasets, the differences become greater, meaning that Random Forests have better predictive power in these instances.
+
+Again, the model was trained on the same `train` data, and validated against the same `validation` datasets.
+
 ```{r}
 # Random Forest model
 library(randomForest)
@@ -518,7 +555,7 @@ print(rf_model)
 
 \FloatBarrier
 
-```{r, include=TRUE, eval=TRUE}
+```{r, eval=TRUE}
 library(randomForest)
 rf_model <- readRDS("Data/rf_model.rds")
 # Predictions
@@ -542,9 +579,11 @@ rf_RMSPE_value <- RMSPE(rf_actual_values, rf_predicted_values)
 cat("RMSPE:", round(rf_RMSPE_value*100, 2),"%", "\n")
 ```
 
-\FloatBarrier
+Once this had run, evaluation statistics were calculated and can be seen in table @tbl-rf_perf_values. This shows a marked improvement in the R^2^ value, with 0.79, or 79% or the variation in predicted sales being able to be explained by the model. Effectiveness of the model was again evaluated with an `r paste0('RMSPE value of ', round(rf_RMSPE_value*100, 2), '%')` being calculated. This proved to be a slight improvement overall from the Decision Tree model as it fell just below the 0.5, or 50% threshold.
 
-This was a bit better as it was lower that the previous RMSPE and below 0.5
+![Performance statistics from the Random Forest model](images/rf_perf_tbl.png){#tbl-rf_perf_values}
+
+\FloatBarrier
 
 ```{r}
 # Assuming your validation_set contains the Month column along with Sales
@@ -572,11 +611,15 @@ ggplot(avg_sales_rf, aes(x = Month)) +
 
 \FloatBarrier
 
+If we compare the @fig-dt_sales above and @fig-rf_sales below, we can visualise this improvement, with the overall gap between actual and predicted sales shrinking slightly, but with these figures significantly closer together between months 1 and 2.
+
 ![Average actual vs predicted sales per month using a Random Forest model](images/act_pred_sales_month_rf.png){#fig-rf_sales width="300"}
 
 \FloatBarrier
 
 ### XGBoost
+
+The final non-linear model to be chosen for testing on the ability to predict sales was the eXtreme Gradient Boosting (XGBoost) model. This is another non-linear tree based machine learning algorithm, similar to the Decision Tree and Random Forest previously discussed. The major difference(s) is that, for example, the Random Forest will calculate the results using a number of 'trees' that have been produced in parallel, whilst the XGBoost model uses a tree and sequentially tries to improve on that one.
 
 ```{r}
 # XGBoost
@@ -619,9 +662,9 @@ postResample(xgb_predictions, validation_set$Sales)
 saveRDS(xgb_predictions, file = "Data/xgb_predictions.rds")
 ```
 
-\FloatBarrier
+Again, the model was trained and validated using the same datasets as before. The Root Mean Squared Error was used for the results calculation parameter, and the number of iterations was set to 1000.
 
-```{r, include=TRUE, eval=TRUE}
+```{r, eval=TRUE}
 library(xgboost)
 xgb_predictions <- readRDS("Data/xgb_predictions.rds")
 # Do RMSPE
@@ -633,14 +676,17 @@ xg_predicted_values <- xgb_predictions[!is.na(xgb_predictions)]
 xg_predicted_values[xg_predicted_values == 0] <- 1e-10
 
 # Calculate RMSPE using MLmetrics package
-
 xg_RMSPE_value <- RMSPE(xg_actual_values, xg_predicted_values)
 
 # Print RMSPE
 cat("RMSPE:", round(xg_RMSPE_value*100, 2),"%", "\n")
 ```
 
+Once the model had been trained and validated the R^2^ value was calculated to 0.92 or, again, 92% of the variation in predicted sales can be explained by the model. In addition, again, the RMSPE was also calculated to `r paste0(round(xg_RMSPE_value*100, 2), '%')` This is another improvement on the previous (Random Forest) model.
+
 \FloatBarrier
+
+![Performance statistics for the XGBoost model](images/xg_perf_tbl.png){#tbl-xg_perf_values fig-align="center"} \FloatBarrier
 
 ```{r}
 # Assuming your validation_set contains the Month column along with Sales
@@ -666,9 +712,17 @@ ggplot(avg_sales_xgb, aes(x = Month)) +
   theme_minimal()
 ```
 
-![Average actual vs predicted sales per month using the XGBoost model](images/act_pred_sales_month_xgb.png){#fig-sales_xgb width="300"}
+If we look at @fig-sales_xgb we can again see a visualisation of the improvements of the XGBoost model. The 1^st^ 3 months were relatively similar, however there is a visual narrowing of the gap between the actual and predicted sales for the rest of the period being analysed.
+
+\FloatBarrier
+
+![Actual v predicted sales from the xgboost trained model](images/act_pred_sales_month_xgb.png){#fig-sales_xgb width="300"}
+
+\FloatBarrier
 
 ### USE XGBOOST MODEL TO PREDICT SALES
+
+With the above in mind, we decided that the model that proved to be able to provide the best predictions of 'Sales' was the XGBoost model. Therefore we would use that in the final prediction of sales for a period where sales were unknown as opposed to the training and validation of predictions using known sales.
 
 ```{r}
 # Final Predictions using XGB_Model
