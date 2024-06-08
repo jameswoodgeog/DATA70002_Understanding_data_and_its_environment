@@ -1,0 +1,52 @@
+title: "Sales forecasting for the European drug store Rossmann"
+subtitle: |
+  \
+  Word count: 1935
+execute: 
+  echo: false
+  include: false
+  eval: false
+  warning: false
+  message: false
+# Set the formatting options
+format:
+  pdf:
+    pdf-engine: xelatex
+    fig-pos: "H"
+    tbl-pos: "H"
+# Include a Table Of Contents
+    toc: true
+# Include a List Of Figures
+    lof: false
+# Include a List Of Tables
+    lot: false
+# Number each headed section
+    number-sections: false
+# Set the main font size and font
+    fontsize: 11pt
+    mainfont: Calibri
+# Adjust the borders to decrease or increase the useable page space
+    geometry:
+      - top = 15mm
+      - bottom = 20mm
+      - left = 20mm
+      - right = 20mm
+# Adjust the headers and footers
+    header-includes:
+# Set the packages to be used by LaTex
+      - \usepackage{placeins}
+      - \usepackage{fancyhdr}
+      - \usepackage{lastpage}
+#  Set the style and what goes in the header and footer of the main and all other pages.
+      - \pagestyle{fancy}
+      - \thispagestyle{fancy}
+      - \fancyhead[R]{Student ID| 11600159}
+      - \fancyhead[L]{DATA70002 | Understanding Data and its Environment}
+      - \renewcommand{\headrulewidth}{0.02pt}
+      - \fancypagestyle{plain}{\fancyhead[R]{Student ID| 11600159}\fancyhead[L]{DATA70002 | Understanding Data and its Environment}\fancyfoot[C]{Page \thepage\ of \pageref{LastPage}}}
+# Set the page number to be "Page n of np"
+      - \fancyfoot[C]{Page \thepage\ of \pageref{LastPage}}
+
+# CSL and bibliography file to be used
+bibliography: DATA70002_refs.bib
+csl: "UoL_Harvard.csl"

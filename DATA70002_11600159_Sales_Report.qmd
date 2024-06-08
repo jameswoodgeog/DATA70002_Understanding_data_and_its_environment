@@ -2,7 +2,7 @@
 title: "Sales forecasting for the European drug store Rossmann"
 subtitle: |
   \
-  Word count: 1935
+  Word count: 1963
 execute: 
   echo: false
   include: false
@@ -83,7 +83,7 @@ library(GGally)
 
 Predicting sales is a vital part for any business across all sectors, from manufacturing to retail. However, this is one of the most difficult tasks a business can undertake due to the complexities involved and the number of factors that can influence them, such as the store location, yearly seasonality, and the day of the week [@hasanAddressingSeasonalityTrend2024].
 
-Rossmann, a part of the A S Watson group, is the market leader for health and beauty retail in Germany with around 100 stores. It also has over 4,500 stores across Europe, from Poland, Turkey to Spain, employing over 60,000 people [@aswatsongroupRossmann2024]. We have been asked to investigate predictive modelling techniques to help the company anticipate sales across the business. This report will describe the processes involved in using four predictive modelling techniques, from which one will be chosen to demonstrate the benefits of machine learning techniques in predicting sales.
+Rossmann, a part of the A S Watson group, is the market leader for health and beauty retail in Germany with around 100 stores. It also has over 4,500 stores across Europe, from Poland, Turkey to Spain, employing over 60,000 people [@aswatsongroupRossmann2024]. We have been asked to investigate predictive modelling techniques to help the company anticipate sales across the business. This report will describe the importance of good quality data and the processes involved in using four predictive modelling techniques, from which one will be chosen to demonstrate the benefits of machine learning techniques in predicting sales.
 
 # Methodology
 
@@ -94,6 +94,8 @@ There were three datasets to be cleaned and used in the models: -
 1.  Store data
 2.  Train data
 3.  Test data
+
+Data quality is vital because problems can and have caused problems with failed projects and customer turnover. Addressing poor data quality is vital in machine learning to minimise the severe problems that can arise. For example, missing data can be treated in a number of ways, which will have different effects on how well models perform. If a large enough proportion of the data is missing and is deleted, the statistical power of the model will be dramatically reduced in many cases, which is why choosing the correct option for each is important. [@gudivadaDataQualityConsiderations2017].
 
 ## Store data
 
@@ -120,7 +122,7 @@ namesdf_split |>
   kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
-See @fig-storevars_tbl for variable names. Categorigcal variables were converted to numeric categories . Missing values were imputed using the mean of all other distances. Variables that contained too many missing values (30%) were removed and others were used to update a binary variable to show if promotion was running at the date of the observation.
+See @fig-storevars_tbl for variable names. Categorical variables were converted to numeric categories . A decision was made to imupte many of the missing values using the mean of all other distances. Variables that contained too many missing values were however, removed completely as they would not be used in the model, while others were used to update a binary variable to show if promotion was running at the date of the observation.
 
 \FloatBarrier
 
@@ -130,7 +132,7 @@ See @fig-storevars_tbl for variable names. Categorigcal variables were converted
 
 ## Train data
 
-See @fig-train_vnames for the training dataset. The 'date' was split into three that consisted of day, month and year because each was anticipated to have a level of impact on the sales individually. If a store was not open, they were dropped. A boolean was created to show either (state) holiday or not-(state)holiday.
+See @fig-train_vnames for the training dataset. This would ultimately be used to train the model with a 70/30 split (train/validate), however, all of the data involved would need to be cleaned in the same manner. For example, the 'date' was split into three that consisted of day, month and year because each was anticipated to have a level of impact on the sales individually. If a store was not open, they were dropped. A boolean was created to show either (state) holiday or not-(state)holiday.
 
 ```{r}
 traindf <- read.csv("Data/clean_train_data.csv")
@@ -160,7 +162,7 @@ namesdf_split |>
 
 ## Test data
 
-See @fig-test_vnames for the test data. The 'date' variable was again split into the three components. The 'open' variable contained some missing data which it was decided to infer 'open == True' for these, due to the related 'promo == T' variable.
+See @fig-test_vnames for the test data. This data contained no sales information, and would be used to test the final model once the best one had been chosen, tested, and validated. The 'date' variable was again split into the three components. The 'open' variable contained some missing data which it was decided to infer 'open == True' for these, due to the related 'promo == T' variable.
 
 ```{r}
 testdf <- read.csv("Data/clean_test_data.csv")
@@ -410,7 +412,9 @@ mdata |>
 
 \FloatBarrier
 
-# The Models
+# Testing the models
+
+Once the remaining variables would not skew the results of any regression or other predictive models, we could investigate which of the chosen models was able to best predict sales.
 
 ## Model 1: Linear regression
 
@@ -500,7 +504,7 @@ saveRDS(validation_set, file = "Data/validation_set.rds")
 
 ## Model 2: Decision Tree
 
-Decision Tree models are non-linear, hierarchical models that use a series of decisions to produce various results, culminating in consequences based upon likelihood of, for example, the chance of an event outcome.
+Decision Tree models are one of the oldest computational methods, and are highly interpretable. They are non-linear, hierarchical models that use a series of decisions to produce various results, culminating in consequences based upon likelihood of, for example, the chance of an event outcome [@devilleDecisionTrees2013].
 
 Firstly a `tune_grid` was created from all combinations of variables. This is part of the hyperparameter optimisation which allows for the optimal number of branches in the decision tree to be found. It was then trained using `rpart` which is a regression classification method.
 
@@ -687,7 +691,7 @@ Comparing @fig-dt_sales above and @fig-rf_sales below, shows the gap between act
 
 ## Model 4: XGBoost
 
-The eXtreme Gradient Boosting (XGBoost) model is another non-linear tree based machine learning algorithm, similar to the Decision Tree and Random Forest. The major difference is that the Random Forest will calculate the results using a number of 'trees' that have been produced in parallel, whilst the XGBoost model uses a tree that is sequentially trying to improve on itself.
+The eXtreme Gradient Boosting (XGBoost) model is another non-linear tree based machine learning algorithm, similar to the Decision Tree and Random Forest. The major difference is that the Random Forest will calculate the results using a number of 'trees' that have been produced in parallel, whilst the XGBoost model uses a tree that is sequentially trying to improve on itself [@jhaveriSuccessPredictionUsing2019].
 
 ```{r}
 # XGBoost
@@ -788,7 +792,7 @@ ggplot(avg_sales_xgb, aes(x = Month)) +
 
 \FloatBarrier
 
-## Using XGBoost to predict sales
+# Using XGBoost to predict sales
 
 With the above in mind, we decided that the model that provided the best predictions of 'Sales' was the XGBoost model. Therefore we would use that in the final prediction for a period where sales were unknown.
 
@@ -866,6 +870,31 @@ pred_avg_sales_per_week <- sales_prediction_data |>
   group_by(DayOfWeek) |>
   summarise(avg_pred_sales = mean(Sales, na.rm = TRUE))
 
+# recode the days of the week in hist_sales from 1-7 to Monday - Sunday
+hist_sales <- hist_sales  |> 
+  mutate(DayOfWeek = case_when(
+    DayOfWeek== 1 ~ "Monday",
+    DayOfWeek== 2 ~ "Tuesday",
+    DayOfWeek== 3 ~ "Wednesday",
+    DayOfWeek== 4 ~ "Thursday",
+    DayOfWeek== 5 ~ "Friday",
+    DayOfWeek== 6 ~ "Saturday",
+    DayOfWeek== 7 ~ "Sunday",
+    TRUE ~ as.character(DayOfWeek)
+  ))
+
+pred_avg_sales_per_week <- pred_avg_sales_per_week  |> 
+  mutate(DayOfWeek = case_when(
+    DayOfWeek== 1 ~ "Monday",
+    DayOfWeek== 2 ~ "Tuesday",
+    DayOfWeek== 3 ~ "Wednesday",
+    DayOfWeek== 4 ~ "Thursday",
+    DayOfWeek== 5 ~ "Friday",
+    DayOfWeek== 6 ~ "Saturday",
+    DayOfWeek== 7 ~ "Sunday",
+    TRUE ~ as.character(DayOfWeek)
+  ))
+
 library(ggplot2)
 ggplot(hist_sales, aes(x = DayOfWeek, y = avg_hist_sales)) +
   geom_line(aes(y = avg_hist_sales,
@@ -878,13 +907,13 @@ ggplot(hist_sales, aes(x = DayOfWeek, y = avg_hist_sales)) +
   theme_minimal()
 ```
 
-# Results
+## Final XGBoost results
 
 @fig-final_xgb shows that for each day of the week (1-7 == Monday to Sunday), the model is very accurate in predicting sales. This is important because some stores will be open or closed on different days to each other and will allow Rossmann to better decide which stores are open on which days.
 
 ![Average actual vs predicted sales per week of year using the XGBoost model](images/final_act_pred_sales_month_xgb.png){#fig-final_xgb fig-align="center" width="300"}
 
-Further evidence of the accuracy of the model can be seen in @fig-store_sales. Each individual store on the x axis displays a predicted average sale value that is relatively close to the actual sales value.
+Further evidence of the accuracy of the model can be seen in @fig-store_sales. Each individual store on the x axis represtented by a peak, displays a value and similar pattern between the predicted average sale value that is relatively close to the actual sales value.
 
 ```{r}
 hist_sales <- df |>
@@ -921,13 +950,13 @@ ggplot(hist_sales, aes(x = Store, y = avg_hist_sales)) +
 
 ![Accuracy of predicted sales per store](images/sales_per_store.png){#fig-store_sales fig-align="center"}
 
-# Limitations
+# Limitations of the study
 
-The main limitation of the XGBoost algorithm is that, it requires greater processing power (unneccessary multi-threaded optimisation) than the other models used in this report and is more time-consuming, which means it takes it longer to run to conclusion [@maXGBoostbasedMethodFlash2021]. This would be something for a business to consider, when thinking about how to optimise sales, but that decision would have to be based on the trade-off between time and cost.
+The main limitation of the XGBoost algorithm is that, it requires greater processing power (unnecessary multi-threaded optimisation) than the other models used in this report and is more time-consuming, which means it takes it longer to run to conclusion [@maXGBoostbasedMethodFlash2021]. This would be something for a business to consider, when thinking about how to optimise sales, but that decision would have to be based on the trade-off between time and cost.
 
-One limitation of this study overall is the lack of processing power available. If more were able to be used, it would have been pertinent to the study to compare the results of another model called Prophet, which is especially good at handling time-series data such as this.
+One limitation of this study overall is the lack of processing power available. If more were able to be used, it would have been pertinent to the study to compare the results of another model called Prophet, which is especially good at handling time-series data such as this, and is especially useful for predicting sales with low error rates and displays better fitting [@kumarjhaTimeSeriesForecasting2021].
 
-# Benefits
+# Benefits of machine learning
 
 The cost of utilising such a system of sales prediction however would be minimal because of the nature of using something like R, which is free and 'open-source' as used in this report. One other advantage of the XGBoost model is that it is very good at handling missing data; in fact it was designed to handle missing data well [@saraswatBeginnersTutorialXGBoost]. This could provide very useful to business when considering whether or not to open a new store, considering that sales data would be missing from a new store, making this method very useful in this context.
 
@@ -935,14 +964,15 @@ The cost of utilising such a system of sales prediction however would be minimal
 
 As can be seen in @fig-final_xgb and @fig-store_sales, the model highlights the importance of machine learning and it's ability to be utilised by business to predict things like sales. XGBoost is an especially good example of this and we would advise that further research is carried out, but ultimately the business should adopt either XGBoost or another similar model to predict future sales.\
 \
-\
-\
-\
-\
-
 \newpage
 
 # References
 
 ::: {#refs}
 :::
+
+\newpage
+
+# Appendix
+
+This [link](https://github.com/jameswoodgeog/DATA70002_Understanding_data_and_its_environment) provides access to the complete project files hosted on Github. Here you will find the code used in the processing of the models. This also contains a .ipynb file that was used to to do the majority of the cleaning of the data as a group.
